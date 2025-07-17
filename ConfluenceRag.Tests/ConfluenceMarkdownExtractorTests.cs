@@ -39,7 +39,7 @@ public class ConfluenceMarkdownExtractorTests
     }
 
     [Fact]
-    public void ExtractMarkdown_WithLists_ShouldCreateFormattedLists()
+    public void ExtractMarkdown_WithUnorderedLists_ShouldCreateFormattedLists()
     {
         // Arrange
         var xml = @"<ul>
@@ -54,6 +54,26 @@ public class ConfluenceMarkdownExtractorTests
         Assert.NotEmpty(result);
         Assert.Contains("- First item", result);
         Assert.Contains("- Second item", result);
+    }
+
+    [Fact]
+    public void ExtractMarkdown_WithOrderedLists_ShouldCreateIncrementingNumbers()
+    {
+        // Arrange
+        var xml = @"<ol>
+            <li>First item</li>
+            <li>Second item</li>
+            <li>Third item</li>
+        </ol>";
+
+        // Act
+        var result = _extractor.ExtractMarkdown(xml);
+
+        // Assert
+        Assert.NotEmpty(result);
+        Assert.Contains("1. First item", result);
+        Assert.Contains("2. Second item", result);
+        Assert.Contains("3. Third item", result);
     }
 
     [Fact]

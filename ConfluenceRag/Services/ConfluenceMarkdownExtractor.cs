@@ -191,32 +191,40 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
             case "ul":
             case "ol":
                 _currentListIndentLevel++;
-                foreach (var line in ExtractChildrenContent(node))
-                    yield return line;
+                // Process list items with proper numbering for ordered lists
+                var listItems = node.Elements("li").ToList();
+                for (int i = 0; i < listItems.Count; i++)
+                {
+                    var liElement = listItems[i];
+                    var liContentParts = ExtractChildrenContent(liElement).ToList();
+                    var liContent = string.Join(' ', liContentParts.Where(part => !string.IsNullOrWhiteSpace(part)));
+                    
+                    // Only add indentation for nested lists (indent level > 1)
+                    string indent = _currentListIndentLevel > 1 ? new(' ', (_currentListIndentLevel - 1) * 2) : "";
+                    
+                    if (node.Name.LocalName == "ol")
+                    {
+                        yield return $"{indent}{i + 1}. {liContent}";
+                    }
+                    else
+                    {
+                        yield return $"{indent}- {liContent}";
+                    }
+                }
                 _currentListIndentLevel--;
                 yield return ""; // Add blank line after lists
                 yield break;
                 
             case "li":
-                var liLines = ExtractChildrenContent(node).ToList();
-                if (liLines.Count > 0)
+                // Skip processing individual li elements if they're being processed by their parent ol/ul
+                if (node.Parent?.Name.LocalName == "ol" || node.Parent?.Name.LocalName == "ul")
                 {
-                    // Only add indentation for nested lists (indent level > 1)
-                    string indent = _currentListIndentLevel > 1 ? new(' ', (_currentListIndentLevel - 1) * 2) : "";
-                    if (node.Parent?.Name.LocalName == "ol")
-                    {
-                        // We need to track the counter at the parent level, but for now use 1
-                        yield return $"{indent}1. {liLines[0]}";
-                    }
-                    else
-                    {
-                        yield return $"{indent}- {liLines[0]}";
-                    }
-                    for (int i = 1; i < liLines.Count; i++)
-                    {
-                        yield return liLines[i];
-                    }
+                    yield break;
                 }
+                
+                // Handle standalone li elements (shouldn't normally happen)
+                var standaloneContent = string.Join(' ', ExtractChildrenContent(node));
+                yield return $"- {standaloneContent}";
                 yield break;
                 
             case "blockquote":
