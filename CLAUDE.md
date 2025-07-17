@@ -49,7 +49,8 @@ dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- test-chunk [file] # T
 - `/data/` - Source documents and fetched Confluence content
 - `/output/` - Generated chunks and processed data
 - `/onnx/` - ONNX model files for embeddings
-- `/output/confluence/chunks.jsonl` - Main chunk database (LARGE FILE - do not read entire file)
+- `/output/confluence/metadata.jsonl` - Metadata chunk database (LARGE FILE - do not read entire file)
+- `/output/confluence/embeddings.bin` - Chunk embeddings in binary form (LARGE FILE - do not read entire file)
 
 ### Important File Handling Notes
 - **DO NOT** attempt to read `/output/confluence/chunks.jsonl` as a whole file - it contains thousands of chunks with embeddings and is far too large for text processing tools
