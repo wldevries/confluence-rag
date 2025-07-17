@@ -49,18 +49,20 @@ class Program
         var rootCommand = new RootCommand("ConfluenceRag - fetch and chunk Confluence documentation");
 
         // Register all command handlers
-        ChunkCommandHandler.Register(rootCommand, provider, pagesDir, outputDir);
         FetchCommandHandler.Register(rootCommand, provider, pagesDir);
-        TestChunkCommandHandler.Register(rootCommand, provider);
         FetchPeopleCommandHandler.Register(rootCommand, provider, peoplePath);
-        SearchCommandHandler.Register(rootCommand, provider, outputDir);
+        ChunkCommandHandler.Register(rootCommand, provider, pagesDir, outputDir);
         AnalyzeChunksCommandHandler.Register(rootCommand, provider, outputDir);
+        TestChunkCommandHandler.Register(rootCommand, provider);
+        SearchCommandHandler.Register(rootCommand, provider, outputDir);
+
+        // MCP command
+        McpCommandHandler.Register(rootCommand);
 
         // If no command is specified, show help
         if (args.Length == 0)
         {
-            rootCommand.Description += "\n\nSpecify a command: chunk or fetch <pageId>";
-            args = new[] { "--help" };
+            args = ["--help"];
         }
 
         return await rootCommand.InvokeAsync(args);
