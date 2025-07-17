@@ -1,7 +1,7 @@
 # Analyze chunk statistics from generated JSONL output
 
 param(
-    [string]$ChunksFile = ".\output\confluence\chunks.jsonl",
+    [string]$ChunksFile = ".\output\confluence\metadata.jsonl",
     [switch]$Verbose
 )
 
