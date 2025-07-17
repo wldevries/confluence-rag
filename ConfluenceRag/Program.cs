@@ -54,6 +54,7 @@ class Program
         TestChunkCommandHandler.Register(rootCommand, provider);
         FetchPeopleCommandHandler.Register(rootCommand, provider, peoplePath);
         SearchCommandHandler.Register(rootCommand, provider, outputDir);
+        AnalyzeChunksCommandHandler.Register(rootCommand, provider, outputDir);
 
         // If no command is specified, show help
         if (args.Length == 0)

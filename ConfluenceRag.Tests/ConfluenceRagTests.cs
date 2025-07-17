@@ -1,8 +1,7 @@
 using ConfluenceRag.Models;
 using ConfluenceRag.Services;
+using FastBertTokenizer;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
-using Microsoft.VisualStudio.TestPlatform.Common;
 using Moq;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
@@ -15,6 +14,7 @@ public class ConfluenceChunkerTestsDates
     private readonly Mock<IEmbeddingGenerator<string, Embedding<float>>> _mockEmbedder;
     private readonly MockFileSystem _fileSystem;
     private readonly Mock<IConfluenceMarkdownExtractor> _extractor;
+    private readonly BertTokenizer _tokenizer;
     private readonly ConfluenceChunkerOptions _options;
     private readonly ConfluenceChunker _chunker;
 
@@ -24,11 +24,13 @@ public class ConfluenceChunkerTestsDates
         _fileSystem = new MockFileSystem();
         _extractor = new Mock<IConfluenceMarkdownExtractor>();
         _extractor.Setup(x => x.ExtractMarkdown(It.IsAny<string>())).Returns(new List<string>() { "# Test Heading", "Test content." });
+        _tokenizer = new FastBertTokenizer.BertTokenizer();
         _options = new ConfluenceChunkerOptions
         {
             PeoplePath = PeoplePath,
+            UseTokenLengthChunking = false,
         };
-        _chunker = new ConfluenceChunker(_fileSystem, _extractor.Object, _options);
+        _chunker = new ConfluenceChunker(_fileSystem, _extractor.Object, _options, _tokenizer);
     }
 
     [Fact]

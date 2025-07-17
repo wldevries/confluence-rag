@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.IO.Abstractions;
 using ConfluenceRag.Services;
 using ConfluenceRag.Models;
+using Microsoft.SemanticKernel.Connectors.Onnx;
 
 namespace ConfluenceRag;
 
@@ -40,9 +41,17 @@ public static class RagServicesInitializer
 
         // Register embedding service
         var embeddingModelPath = configuration["EMBEDDING_MODEL_PATH"] ?? Path.Combine(Directory.GetCurrentDirectory(), "onnx/all-MiniLM-L6-v2");
-        services.AddBertOnnxEmbeddingGenerator(
-            Path.Combine(embeddingModelPath, "model.onnx"),
-            Path.Combine(embeddingModelPath, "vocab.txt"));
+        var modelPath = Path.Combine(embeddingModelPath, "model.onnx");
+        var vocabPath = Path.Combine(embeddingModelPath, "vocab.txt");
+        var bertOptions = new BertOnnxOptions();
+        services.AddBertOnnxEmbeddingGenerator(modelPath, vocabPath);
+
+        // Register tokenizer        
+        var tokenizer = new FastBertTokenizer.BertTokenizer();
+        using var vocabStream = new FileStream(vocabPath, FileMode.Open, FileAccess.Read);
+        using var vocabReader = new StreamReader(vocabStream);
+        tokenizer.LoadVocabulary(vocabReader, !bertOptions.CaseSensitive, bertOptions.UnknownToken, bertOptions.ClsToken, bertOptions.SepToken, bertOptions.PadToken, bertOptions.UnicodeNormalization);
+        services.AddSingleton(tokenizer);
 
         // Register chunker and fetcher
         services.AddSingleton<IConfluenceChunker, ConfluenceChunker>();

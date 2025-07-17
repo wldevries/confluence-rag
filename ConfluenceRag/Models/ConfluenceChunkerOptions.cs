@@ -10,6 +10,6 @@ public class ConfluenceChunkerOptions
     public int OverlapSize { get; set; } = 100;
 
     // Token-based chunking options
-    public bool UseTokenLengthChunking { get; set; } = false;
+    public bool UseTokenLengthChunking { get; set; } = true;
     public int TokenOverlapSize { get; set; } = 20;
 }

@@ -17,12 +17,12 @@ public class ConfluenceChunker : IConfluenceChunker
         IFileSystem fileSystem,
         IConfluenceMarkdownExtractor extractor,
         ConfluenceChunkerOptions options,
-        BertTokenizer? tokenizer = null)
+        BertTokenizer tokenizer)
     {
         _fileSystem = fileSystem;
         _extractor = extractor;
         _options = options;
-        _tokenizer = tokenizer ?? new();
+        _tokenizer = tokenizer;
     }
 
     public async Task<int> ProcessAllConfluenceJsonAndChunkAsync(string dataDir, string outputDir, IEmbeddingGenerator<string, Embedding<float>> embedder)
