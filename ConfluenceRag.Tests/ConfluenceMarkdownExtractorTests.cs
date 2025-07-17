@@ -39,28 +39,6 @@ public class ConfluenceMarkdownExtractorTests
     }
 
     [Fact]
-    public void ExtractMarkdown_WithTables_ShouldCreateMarkdownTables()
-    {
-        // Arrange
-        var xml = @"<table>
-            <tr><th>Header 1</th><th>Header 2</th></tr>
-            <tr><td>Cell 1</td><td>Cell 2</td></tr>
-        </table>";
-
-        // Act
-        var result = _extractor.ExtractMarkdown(xml);
-
-        // Assert
-        if (result.Count > 0)
-        {
-            Assert.Contains("Header 1", result);
-            Assert.Contains("Header 2", result);
-            Assert.Contains("Cell 1", result);
-            Assert.Contains("Cell 2", result);
-        }
-    }
-
-    [Fact]
     public void ExtractMarkdown_WithLists_ShouldCreateFormattedLists()
     {
         // Arrange

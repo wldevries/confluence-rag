@@ -92,6 +92,9 @@ dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- test-chunk [file] # T
 - Handle errors with try/catch and display exceptions using `AnsiConsole.WriteException()`
 - Use configuration providers (IConfiguration, Options pattern) for secrets and settings
 
+### Unit tests
+- Do not use text from actual Confluence pages. Use generated fake texts in new unit tests.
+
 ### File System Abstraction
 - **Required**: Use `TestableIO.System.IO.Abstractions` for all file system operations
 - **Testing**: Use `TestableIO.System.IO.Abstractions.TestingHelpers` for unit tests

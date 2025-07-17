@@ -119,6 +119,14 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
     // Recursively extract readable text from an XElement, handling macros, tables, and links
     private IEnumerable<string> ExtractConfluenceContentFromXElement(XElement node)
     {
+        // Special handling for table elements - process them as a whole rather than processing their children
+        if (node.Name.LocalName == "table")
+        {
+            foreach (var line in ProcessTableElement(node))
+                yield return line;
+            yield break;
+        }
+        
         if (!node.HasElements)
         {
             if (!string.IsNullOrWhiteSpace(node.Value))
@@ -261,76 +269,10 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                         break;
 
                     case "table":
-                        // Only treat rows with <th> as header rows. Do not use <colgroup> for header detection.
-                        var headerRows = new List<XElement>();
-                        var bodyRows = new List<XElement>();
-                        var thead = child.Elements().FirstOrDefault(e => e.Name.LocalName == "thead");
-                        var tbody = child.Elements().FirstOrDefault(e => e.Name.LocalName == "tbody");
-                        var tfoot = child.Elements().FirstOrDefault(e => e.Name.LocalName == "tfoot");
-
-                        // If thead exists, use its rows as header
-                        if (thead != null)
-                            headerRows.AddRange(thead.Elements().Where(e => e.Name.LocalName == "tr"));
-                        // If tbody exists, use its rows as body
-                        if (tbody != null)
-                            bodyRows.AddRange(tbody.Elements().Where(e => e.Name.LocalName == "tr"));
-                        // Add tfoot rows to body (optional)
-                        if (tfoot != null)
-                            bodyRows.AddRange(tfoot.Elements().Where(e => e.Name.LocalName == "tr"));
-                        // If no tbody/thead, just get all tr under table
-                        if (headerRows.Count == 0 && bodyRows.Count == 0)
-                        {
-                            var allRows = child.Elements().Where(e => e.Name.LocalName == "tr").ToList();
-                            if (allRows.Count > 0)
-                            {
-                                // If first row has th, treat as header
-                                if (allRows[0].Elements().Any(c => c.Name.LocalName == "th"))
-                                {
-                                    headerRows.Add(allRows[0]);
-                                    bodyRows.AddRange(allRows.Skip(1));
-                                }
-                                else
-                                {
-                                    // All rows are body rows
-                                    bodyRows.AddRange(allRows);
-                                }
-                            }
-                        }
-
-                        if (headerRows.Count == 0)
-                        {
-                            // No header row: synthesize a header row with numbers (1, 2, 3, ...)
-                            var firstRow = bodyRows[0];
-                            var cellCount = firstRow.Elements().Count(e => e.Name.LocalName == "th" || e.Name.LocalName == "td");
-                            // Synthesize a header row XElement
-                            var headerRow = new XElement("tr",
-                                Enumerable.Range(1, cellCount).Select(n => new XElement("th", $"Column {n}"))
-                            );
-                            headerRows.Add(headerRow);
-                        }
-
-                        // Output header rows
-                        bool headerDone = false;
-                        foreach (var row in headerRows)
-                        {
-                            var cells = row.Elements().Where(e => e.Name.LocalName == "th" || e.Name.LocalName == "td")
-                                .Select(e => string.Join(" ", ExtractConfluenceContentFromXElement(e)).Trim().Replace("\n", " "));
-                            yield return "| " + string.Join(" | ", cells) + " |";
-                            headerDone = true;
-                        }
-                        // If header present, add markdown separator
-                        if (headerDone)
-                        {
-                            var headerCellCount = headerRows.First().Elements().Count(e => e.Name.LocalName == "th" || e.Name.LocalName == "td");
-                            yield return "|" + string.Join("|", Enumerable.Repeat(" --- ", headerCellCount)) + "|";
-                        }
-                        // Output body rows
-                        foreach (var row in bodyRows)
-                        {
-                            var cells = row.Elements().Where(e => e.Name.LocalName == "th" || e.Name.LocalName == "td")
-                                .Select(e => string.Join(" ", ExtractConfluenceContentFromXElement(e)).Trim().Replace("\n", " "));
-                            yield return "| " + string.Join(" | ", cells) + " |";
-                        }
+                        // Table elements are now handled at the top of ExtractConfluenceContentFromXElement
+                        // This case should not be reached, but keeping it for safety
+                        foreach (var line in ProcessTableElement(child))
+                            yield return line;
                         break;
 
                     // All table-related elements are handled above
@@ -506,7 +448,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                     var isCodeMacro = parentMacro?.Name.LocalName == "structured-macro" && 
                                      parentMacro.Attribute(XName.Get("name", AtlassianCloudNamespace))?.Value == "code";
                     
-                    if (isCodeMacro)
+                    if (isCodeMacro && parentMacro != null)
                     {
                         // Extract language parameter from parent macro
                         var languageParam = parentMacro.Elements().FirstOrDefault(e => 
@@ -661,6 +603,95 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
             default:
                 yield return $"[Structured macro removed: {macroName}]";
                 break;
+        }
+    }
+
+    private string ProcessTableCellContent(IEnumerable<string> lines)
+    {
+        var cellLines = lines
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Trim())
+            .ToList();
+        
+        if (cellLines.Count <= 1)
+            return string.Join(" ", cellLines).Trim();
+        
+        // For multi-line cells, use HTML <br> tags in markdown tables
+        // This preserves line breaks while maintaining table compatibility
+        return string.Join("<br>", cellLines);
+    }
+
+    private IEnumerable<string> ProcessTableElement(XElement tableElement)
+    {
+        // Only treat rows with <th> as header rows. Do not use <colgroup> for header detection.
+        var headerRows = new List<XElement>();
+        var bodyRows = new List<XElement>();
+        var thead = tableElement.Elements().FirstOrDefault(e => e.Name.LocalName == "thead");
+        var tbody = tableElement.Elements().FirstOrDefault(e => e.Name.LocalName == "tbody");
+        var tfoot = tableElement.Elements().FirstOrDefault(e => e.Name.LocalName == "tfoot");
+
+        // If thead exists, use its rows as header
+        if (thead != null)
+            headerRows.AddRange(thead.Elements().Where(e => e.Name.LocalName == "tr"));
+        // If tbody exists, use its rows as body
+        if (tbody != null)
+            bodyRows.AddRange(tbody.Elements().Where(e => e.Name.LocalName == "tr"));
+        // Add tfoot rows to body (optional)
+        if (tfoot != null)
+            bodyRows.AddRange(tfoot.Elements().Where(e => e.Name.LocalName == "tr"));
+        // If no tbody/thead, just get all tr under table
+        if (headerRows.Count == 0 && bodyRows.Count == 0)
+        {
+            var allRows = tableElement.Elements().Where(e => e.Name.LocalName == "tr").ToList();
+            if (allRows.Count > 0)
+            {
+                // If first row has th, treat as header
+                if (allRows[0].Elements().Any(c => c.Name.LocalName == "th"))
+                {
+                    headerRows.Add(allRows[0]);
+                    bodyRows.AddRange(allRows.Skip(1));
+                }
+                else
+                {
+                    // All rows are body rows
+                    bodyRows.AddRange(allRows);
+                }
+            }
+        }
+
+        if (headerRows.Count == 0)
+        {
+            // No header row: synthesize a header row with numbers (1, 2, 3, ...)
+            var firstRow = bodyRows[0];
+            var cellCount = firstRow.Elements().Count(e => e.Name.LocalName == "th" || e.Name.LocalName == "td");
+            // Synthesize a header row XElement
+            var headerRow = new XElement("tr",
+                Enumerable.Range(1, cellCount).Select(n => new XElement("th", $"Column {n}"))
+            );
+            headerRows.Add(headerRow);
+        }
+
+        // Output header rows
+        bool headerDone = false;
+        foreach (var row in headerRows)
+        {
+            var cells = row.Elements().Where(e => e.Name.LocalName == "th" || e.Name.LocalName == "td")
+                .Select(e => ProcessTableCellContent(ExtractConfluenceContentFromXElement(e)));
+            yield return "| " + string.Join(" | ", cells) + " |";
+            headerDone = true;
+        }
+        // If header present, add markdown separator
+        if (headerDone)
+        {
+            var headerCellCount = headerRows.First().Elements().Count(e => e.Name.LocalName == "th" || e.Name.LocalName == "td");
+            yield return "|" + string.Join("|", Enumerable.Repeat(" --- ", headerCellCount)) + "|";
+        }
+        // Output body rows
+        foreach (var row in bodyRows)
+        {
+            var cells = row.Elements().Where(e => e.Name.LocalName == "th" || e.Name.LocalName == "td")
+                .Select(e => ProcessTableCellContent(ExtractConfluenceContentFromXElement(e)));
+            yield return "| " + string.Join(" | ", cells) + " |";
         }
     }
 }
