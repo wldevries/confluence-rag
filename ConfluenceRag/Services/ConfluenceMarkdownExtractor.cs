@@ -349,9 +349,9 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                 {
                     var shortcutParam = child.Attribute(XName.Get("parameter", ResourceIdentifierNamespace))?.Value;
                     if (!string.IsNullOrWhiteSpace(shortcutParam))
-                        yield return $"[Shortcut: {shortcutParam.Trim()}]";
+                        yield return $"Jira Issue: {shortcutParam.Trim()}";
                     else
-                        yield return "[Shortcut: Jira]";
+                        yield return "Jira Issue: [Unknown]";
                 }
                 break;
             case "user":
@@ -484,6 +484,22 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
         var macroName = child.Attribute(XName.Get("name", AtlassianCloudNamespace))?.Value ?? "macro";
         switch (macroName)
         {
+            case "jira":
+                // Extract Jira issue key and title if present
+                var jiraKey = child.Elements().FirstOrDefault(e => e.Name.LocalName == "parameter" && (string?)e.Attribute(XName.Get("name", AtlassianCloudNamespace)) == "key")?.Value;
+                var jiraTitle = child.Elements().FirstOrDefault(e => e.Name.LocalName == "parameter" && (string?)e.Attribute(XName.Get("name", AtlassianCloudNamespace)) == "title")?.Value;
+                if (!string.IsNullOrWhiteSpace(jiraKey))
+                {
+                    if (!string.IsNullOrWhiteSpace(jiraTitle))
+                        yield return $"Jira Issue: {jiraKey} - {jiraTitle.Trim()}";
+                    else
+                        yield return $"Jira Issue: {jiraKey}";
+                }
+                else
+                {
+                    yield return "Jira reference";
+                }
+                break;
             case "status":
                 // Extract only the status title/text, disregard color
                 var statusTitleParam = child.Elements().FirstOrDefault(e => e.Name.LocalName == "parameter" && (string?)e.Attribute(XName.Get("name", AtlassianCloudNamespace)) == "title")?.Value;
