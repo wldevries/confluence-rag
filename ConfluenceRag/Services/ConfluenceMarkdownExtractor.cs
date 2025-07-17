@@ -68,42 +68,11 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
             var nodeHeadings = new List<string[]>();
             foreach (var node in root.Elements())
             {
-                // Skip top-level roadmap macros
-                if (node.Name.LocalName == "structured-macro")
+                foreach (var line in this.ExtractFromRootElement(node, headingLevels))
                 {
-                    var macroName = node.Attribute(XName.Get("name", AtlassianCloudNamespace))?.Value ?? string.Empty;
-                    if (macroName == "roadmap" || macroName == "roadmap-planner")
-                    {
-                        continue;
-                    }
-                }
-
-                // Only handle headings specially, everything else is delegated to ExtractConfluenceContentFromXElement
-                if (node.Name.LocalName.Length == 2 && node.Name.LocalName[0] == 'h' && char.IsDigit(node.Name.LocalName[1]))
-                {
-                    // Heading (h1-h6)
-                    int nodeHeadingLevel = int.Parse(node.Name.LocalName.Substring(1, 1));
-                    var headingLines = this.ExtractConfluenceContentFromXElement(node).ToList();
-                    if (headingLines.Count == 0) continue;
-                    // Only the first line is used for heading context
-                    var headingText = headingLines[0];
-                    var headingLine = new string('#', nodeHeadingLevel) + " " + headingText;
-                    lines.Add(headingLine);
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    lines.Add(line.TrimEnd('\r', '\n'));
                     nodeHeadings.Add([.. headingLevels]);
-                    // Update heading context
-                    headingLevels[nodeHeadingLevel - 1] = headingText;
-                    for (int i = nodeHeadingLevel; i < headingLevels.Length; i++)
-                        headingLevels[i] = string.Empty;
-                }
-                else
-                {
-                    // For all other elements, just extract lines and add with current heading context
-                    foreach (var line in this.ExtractConfluenceContentFromXElement(node))
-                    {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        lines.Add(line.TrimEnd('\r', '\n'));
-                        nodeHeadings.Add([.. headingLevels]);
-                    }
                 }
             }
             return lines;
@@ -115,226 +84,272 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
         }
     }
 
-
-    // Recursively extract readable text from an XElement, handling macros, tables, and links
-    private IEnumerable<string> ExtractConfluenceContentFromXElement(XElement node)
+    // Extract content from a root-level element, handling special cases like headings
+    private IEnumerable<string> ExtractFromRootElement(XElement node, string[] headingLevels)
     {
-        // Special handling for table elements - process them as a whole rather than processing their children
-        if (node.Name.LocalName == "table")
+        // Handle headings specially for heading context tracking
+        if (node.Name.LocalName.Length == 2 && node.Name.LocalName[0] == 'h' && char.IsDigit(node.Name.LocalName[1]))
         {
-            foreach (var line in ProcessTableElement(node))
+            // Heading (h1-h6)
+            int nodeHeadingLevel = int.Parse(node.Name.LocalName.Substring(1, 1));
+            var headingLines = this.ExtractChildrenContent(node).ToList();
+            if (headingLines.Count == 0) yield break;
+            
+            // Only the first line is used for heading context
+            var headingText = headingLines[0];
+            var headingLine = new string('#', nodeHeadingLevel) + " " + headingText;
+            yield return headingLine;
+            
+            // Update heading context
+            headingLevels[nodeHeadingLevel - 1] = headingText;
+            for (int i = nodeHeadingLevel; i < headingLevels.Length; i++)
+                headingLevels[i] = string.Empty;
+        }
+        else
+        {
+            // For all other elements, process through ExtractFromElement
+            foreach (var line in this.ExtractFromElement(node))
+            {
                 yield return line;
+            }
+        }
+    }
+
+    // Extract content from an element based on its type, then extract content from children if needed
+    private IEnumerable<string> ExtractFromElement(XElement node)
+    {
+        // Handle namespace-specific elements first
+        if (node.Name.NamespaceName == AtlassianCloudNamespace)
+        {
+            foreach (var line in ExtractFromAtlassionConfluenceElement(node))
+            {
+                yield return line;
+            }
             yield break;
         }
-        
+
+        if (node.Name.NamespaceName == ResourceIdentifierNamespace)
+        {
+            foreach (var line in ExtractFromResourceIdentifierElement(node))
+            {
+                yield return line;
+            }
+            yield break;
+        }
+
+        // Handle block elements that need special processing
+        switch (node.Name.LocalName)
+        {
+            case "p":
+            case "div":
+                var paragraphParts = new List<string>();
+                foreach (var childNode in node.Nodes())
+                {
+                    if (childNode is XElement childElement)
+                    {
+                        foreach (var part in ExtractFromElement(childElement))
+                        {
+                            paragraphParts.Add(part);
+                        }
+                    }
+                    else if (childNode is XText textNode && !string.IsNullOrWhiteSpace(textNode.Value))
+                    {
+                        paragraphParts.Add(textNode.Value);
+                    }
+                }
+                var paragraphContent = string.Join("", paragraphParts)
+                    .Trim()
+                    .Replace("\n", " ")
+                    .Replace("\r", " ");
+                if (!string.IsNullOrEmpty(paragraphContent))
+                    yield return paragraphContent;
+                yield return ""; // Add a blank line after paragraphs/divs
+                yield break;
+                
+            case "em":
+            case "i":
+            case "u":
+            case "strong":
+            case "b":
+            case "s":
+            case "del":
+            case "sup":
+            case "sub":
+            case "code":
+            case "pre":
+            case "time":
+                var inlineResult = ExtractFromInlineElement(node);
+                if (inlineResult != null)
+                    yield return inlineResult;
+                yield break;
+                
+            case "table":
+                foreach (var line in ProcessTableElement(node))
+                    yield return line;
+                yield break;
+                
+            case "ul":
+            case "ol":
+                _currentListIndentLevel++;
+                foreach (var line in ExtractChildrenContent(node))
+                    yield return line;
+                _currentListIndentLevel--;
+                yield return ""; // Add blank line after lists
+                yield break;
+                
+            case "li":
+                var liLines = ExtractChildrenContent(node).ToList();
+                if (liLines.Count > 0)
+                {
+                    // Only add indentation for nested lists (indent level > 1)
+                    string indent = _currentListIndentLevel > 1 ? new(' ', (_currentListIndentLevel - 1) * 2) : "";
+                    if (node.Parent?.Name.LocalName == "ol")
+                    {
+                        // We need to track the counter at the parent level, but for now use 1
+                        yield return $"{indent}1. {liLines[0]}";
+                    }
+                    else
+                    {
+                        yield return $"{indent}- {liLines[0]}";
+                    }
+                    for (int i = 1; i < liLines.Count; i++)
+                    {
+                        yield return liLines[i];
+                    }
+                }
+                yield break;
+                
+            case "blockquote":
+                foreach (var line in ExtractChildrenContent(node))
+                    yield return "> " + line.Replace("\n", "\n> ");
+                yield break;
+                
+            case "hr":
+                yield return "---";
+                yield break;
+                
+            case "br":
+                yield return "";
+                yield break;
+                
+                
+            case "a":
+                var href = node.Attribute("href")?.Value;
+                var linkLines = ExtractChildrenContent(node).ToArray();
+                if (href != null)
+                    yield return $"[{string.Join(" ", linkLines)}]({href})";
+                else
+                    foreach (var line in linkLines)
+                        yield return line;
+                yield break;
+                
+            case "span":
+                var style = node.Attribute("style")?.Value;
+                if (style != null && style.Contains("text-decoration") && style.Contains("line-through"))
+                {
+                    foreach (var line in ExtractChildrenContent(node))
+                        yield return "~~" + line + "~~";
+                }
+                else
+                {
+                    foreach (var line in ExtractChildrenContent(node))
+                        yield return line;
+                }
+                yield break;
+                
+            default:
+                // For other elements, process children
+                foreach (var line in ExtractChildrenContent(node))
+                {
+                    yield return line;
+                }
+                yield break;
+        }
+    }
+
+    // Extract content from the children of an XElement
+    private IEnumerable<string> ExtractChildrenContent(XElement node)
+    {
+        // Handle inline elements that have no child elements but need formatting
         if (!node.HasElements)
         {
+            var inlineResult = ExtractFromInlineElement(node);
+            if (inlineResult != null)
+            {
+                yield return inlineResult;
+                yield break;
+            }
+            
+            // For other elements without children, just return the text content
             if (!string.IsNullOrWhiteSpace(node.Value))
                 yield return node.Value;
             yield break;
         }
 
-        int olCounter = 1;
-
-        // Use indexed iteration to allow lookahead
-        var childNodes = node.Nodes().ToList();
-        for (int idx = 0; idx < childNodes.Count; idx++)
+        // Process all child nodes
+        foreach (var childNode in node.Nodes())
         {
-            var el = childNodes[idx];
-            if (el is XElement child)
+            if (childNode is XElement childElement)
             {
-                if (child.Name.NamespaceName == AtlassianCloudNamespace)
+                foreach (var line in ExtractFromElement(childElement))
                 {
-                    foreach (var line in ExtractFromAtlassionConfluenceElement(child))
-                    {
-                        yield return line;
-                    }
-                    continue;
-                }
-
-                if (child.Name.NamespaceName == ResourceIdentifierNamespace)
-                {
-                    foreach (var line in ExtractFromResourceIdentifierElement(child))
-                    {
-                        yield return line;
-                    }
-                    continue;
-                }
-
-                switch (child.Name.LocalName)
-                {
-                    case "time":
-                        // Output <time datetime="..."></time> as readable date
-                        var datetimeAttr = child.Attribute("datetime")?.Value;
-                        if (!string.IsNullOrWhiteSpace(datetimeAttr))
-                        {
-                            if (DateTime.TryParse(datetimeAttr, out var parsedDate))
-                                yield return $"Date: {parsedDate:yyyy-MM-dd}";
-                            else
-                                yield return $"Date: {datetimeAttr}";
-                        }
-                        else
-                        {
-                            yield return "Date: [Not specified]";
-                        }
-                        break;
-
-                    case "hr":
-                        yield return "---"; // Horizontal rule
-                        break;
-
-                    // Should be handled at the top level in ExtractTextChunksWithHeadings
-                    case "h1":
-                    case "h2":
-                    case "h3":
-                    case "h4":
-                    case "h5":
-                    case "h6":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return line;
-                        break;
-
-                    case "p":
-                    case "div":
-                        var paragraphContent = string.Join("", ExtractConfluenceContentFromXElement(child))
-                            .Trim()
-                            .Replace("\n", " ")
-                            .Replace("\r", " ");
-                        if (!string.IsNullOrEmpty(paragraphContent))
-                            yield return paragraphContent;
-                        yield return ""; // Add a blank line after paragraphs/divs
-                        break;
-
-                    case "span":
-                        var style = child.Attribute("style")?.Value;
-                        if (style != null && style.Contains("text-decoration") && style.Contains("line-through"))
-                        {
-                            foreach (var line in ExtractConfluenceContentFromXElement(child))
-                                yield return "~~" + line + "~~";
-                        }
-                        else
-                        {
-                            foreach (var line in ExtractConfluenceContentFromXElement(child))
-                                yield return line;
-                        }
-                        break;
-                    case "blockquote":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return "> " + line.Replace("\n", "\n> ");
-                        break;
-                    case "a":
-                        var href = child.Attribute("href")?.Value;
-                        var linkLines = this.ExtractConfluenceContentFromXElement(child).ToArray();
-                        if (href != null)
-                            yield return $"[{string.Join(" ", linkLines)}]({href})";
-                        else
-                            foreach (var line in linkLines)
-                                yield return line;
-                        break;
-                    case "em":
-                    case "i":
-                    case "u":
-                        foreach (var line in this.ExtractConfluenceContentFromXElement(child))
-                            yield return "*" + line.Trim() + "*";
-                        break;
-                    case "strong":
-                    case "b":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return "**" + line.Trim() + "**";
-                        break;
-                    case "s":
-                    case "del":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return "~~" + line.Trim() + "~~";
-                        break;
-                    case "sup":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return "^" + line.Trim() + "^";
-                        break;
-                    case "sub":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return "~" + line.Trim() + "~";
-                        break;
-                    case "code":
-                    case "pre":
-                        var codeContent = string.Join(" ", ExtractConfluenceContentFromXElement(child))
-                            .Trim()
-                            .Replace("\n", " ")
-                            .Replace("\r", " ");
-                        if (!string.IsNullOrEmpty(codeContent))
-                            yield return "`" + codeContent + "`";
-                        break;
-                    case "br":
-                        yield return ""; // blank line
-                        break;
-
-                    case "table":
-                        // Table elements are now handled at the top of ExtractConfluenceContentFromXElement
-                        // This case should not be reached, but keeping it for safety
-                        foreach (var line in ProcessTableElement(child))
-                            yield return line;
-                        break;
-
-                    // All table-related elements are handled above
-                    case "tr":
-                    case "tbody":
-                    case "thead":
-                    case "tfoot":
-                    case "colgroup":
-                        break;
-                    case "col":
-                    case "th":
-                    case "td":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return line;
-                        break;
-
-                    case "ul":
-                    case "ol":
-                        _currentListIndentLevel++;
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return line;
-                        _currentListIndentLevel--;
-                        // Look ahead: if next sibling is not a ul/ol, emit a blank line
-                        bool nextIsList = false;
-                        if (idx + 1 < childNodes.Count)
-                        {
-                            var next = childNodes[idx + 1] as XElement;
-                            if (next != null && (next.Name.LocalName == "ul" || next.Name.LocalName == "ol"))
-                                nextIsList = true;
-                        }
-                        if (!nextIsList)
-                            yield return string.Empty;
-                        break;
-
-                    case "li":
-                        var liLines = ExtractConfluenceContentFromXElement(child).ToList();
-                        if (liLines.Count > 0)
-                        {
-                            string indent = new(' ', _currentListIndentLevel * 2);
-                            if (node.Name.LocalName == "ol")
-                            {
-                                // Ordered list item
-                                yield return $"{indent}{olCounter++}. {liLines[0]}";
-                            }
-                            else
-                            {
-                                // Unordered list item
-                                yield return $"{indent}- {liLines[0]}";
-                            }
-                            for (int i = 1; i < liLines.Count; i++)
-                            {
-                                yield return liLines[i];
-                            }
-                        }
-                        break;
+                    yield return line;
                 }
             }
-            else if (el is XText textNode)
+            else if (childNode is XText textNode && !string.IsNullOrWhiteSpace(textNode.Value))
             {
-                if (!string.IsNullOrWhiteSpace(textNode.Value))
-                    yield return textNode.Value;
+                yield return textNode.Value;
             }
+        }
+    }
+
+    private string? ExtractFromInlineElement(XElement element)
+    {
+        string content;
+        
+        if (!element.HasElements)
+        {
+            // Simple case: element has only text content
+            content = element.Value.Trim();
+        }
+        else
+        {
+            // Complex case: element has child elements, process them recursively
+            content = string.Join(" ", ExtractChildrenContent(element))
+                .Trim()
+                .Replace("\n", " ")
+                .Replace("\r", " ");
+        }
+        
+        if (string.IsNullOrEmpty(content))
+            return null;
+            
+        return element.Name.LocalName switch
+        {
+            "em" or "i" or "u" => "*" + content + "*",
+            "strong" or "b" => "**" + content + "**",
+            "s" or "del" => "~~" + content + "~~",
+            "sup" => "^" + content + "^",
+            "sub" => "~" + content + "~",
+            "code" or "pre" => "`" + content + "`",
+            "time" => FormatTimeElement(element),
+            _ => null
+        };
+    }
+
+    private string FormatTimeElement(XElement element)
+    {
+        var datetimeAttr = element.Attribute("datetime")?.Value;
+        if (!string.IsNullOrWhiteSpace(datetimeAttr))
+        {
+            if (DateTime.TryParse(datetimeAttr, out var parsedDate))
+                return $"Date: {parsedDate:yyyy-MM-dd}";
+            else
+                return $"Date: {datetimeAttr}";
+        }
+        else
+        {
+            return "Date: [Not specified]";
         }
     }
 
@@ -383,7 +398,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                     yield return "Page link";
                 break;
             default:
-                foreach (var line in ExtractConfluenceContentFromXElement(child))
+                foreach (var line in ExtractChildrenContent(child))
                     yield return line;
                 break;
         }
@@ -399,7 +414,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                 if (!string.IsNullOrWhiteSpace(anchor))
                     yield break; // Skip links with anchors, they are not useful in text extraction
 
-                foreach (var line in ExtractConfluenceContentFromXElement(child))
+                foreach (var line in ExtractChildrenContent(child))
                 {
                     yield return line;
                 }
@@ -434,7 +449,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
 
             case "rich-text-body":
                 // Handle rich-text-body as a special case
-                foreach (var line in ExtractConfluenceContentFromXElement(child))
+                foreach (var line in ExtractChildrenContent(child))
                     yield return line;
                 break;
             
@@ -549,20 +564,20 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
             case "warning":
             case "error":
                 var macroBody = child.Elements().FirstOrDefault(e => e.Name.LocalName == "rich-text-body");
-                var macroContent = macroBody != null ? ExtractConfluenceContentFromXElement(macroBody) : ExtractConfluenceContentFromXElement(child);
+                var macroContent = macroBody != null ? ExtractChildrenContent(macroBody) : ExtractChildrenContent(child);
                 foreach (var line in macroContent)
                     yield return $"> **{macroName.ToUpperInvariant()}:** {line.Trim()}";
                 break;
             case "panel":
                 var panelBody = child.Elements().FirstOrDefault(e => e.Name.LocalName == "rich-text-body");
-                var panelContent = panelBody != null ? ExtractConfluenceContentFromXElement(panelBody) : ExtractConfluenceContentFromXElement(child);
+                var panelContent = panelBody != null ? ExtractChildrenContent(panelBody) : ExtractChildrenContent(child);
                 foreach (var line in panelContent)
                     yield return $"> **Panel:** {line.Trim()}";
                 break;
             case "excerpt":
             case "excerpt-include":
                 var excerptBody = child.Elements().FirstOrDefault(e => e.Name.LocalName == "rich-text-body");
-                var excerptContent = excerptBody != null ? ExtractConfluenceContentFromXElement(excerptBody) : ExtractConfluenceContentFromXElement(child);
+                var excerptContent = excerptBody != null ? ExtractChildrenContent(excerptBody) : ExtractChildrenContent(child);
                 foreach (var line in excerptContent)
                     yield return line;
                 break;
@@ -574,7 +589,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                 if (expandBody != null)
                 {
                     // Recursively extract all content from rich-text-body, including tables and nested macros
-                    foreach (var line in ExtractConfluenceContentFromXElement(expandBody))
+                    foreach (var line in ExtractChildrenContent(expandBody))
                     {
                         if (!string.IsNullOrWhiteSpace(line))
                             yield return $"> {line.Trim().Replace("\n", "\n> ")}";
@@ -583,7 +598,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                 else
                 {
                     // Fallback: extract from the macro node itself
-                    foreach (var line in ExtractConfluenceContentFromXElement(child))
+                    foreach (var line in ExtractChildrenContent(child))
                     {
                         if (!string.IsNullOrWhiteSpace(line))
                             yield return $"> {line.Trim().Replace("\n", "\n> ")}";
@@ -591,7 +606,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                 }
                 break;
             case "link":
-                foreach (var line in ExtractConfluenceContentFromXElement(child))
+                foreach (var line in ExtractChildrenContent(child))
                     yield return line;
                 break;
             case "code":
@@ -692,7 +707,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
         foreach (var row in headerRows)
         {
             var cells = row.Elements().Where(e => e.Name.LocalName == "th" || e.Name.LocalName == "td")
-                .Select(e => ProcessTableCellContent(ExtractConfluenceContentFromXElement(e)));
+                .Select(e => ProcessTableCellContent(ExtractChildrenContent(e)));
             yield return "| " + string.Join(" | ", cells) + " |";
             headerDone = true;
         }
@@ -706,7 +721,7 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
         foreach (var row in bodyRows)
         {
             var cells = row.Elements().Where(e => e.Name.LocalName == "th" || e.Name.LocalName == "td")
-                .Select(e => ProcessTableCellContent(ExtractConfluenceContentFromXElement(e)));
+                .Select(e => ProcessTableCellContent(ExtractChildrenContent(e)));
             yield return "| " + string.Join(" | ", cells) + " |";
         }
     }

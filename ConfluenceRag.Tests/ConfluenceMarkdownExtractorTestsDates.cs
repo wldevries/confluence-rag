@@ -35,7 +35,10 @@ public class ConfluenceMarkdownExtractorTestsDates
 
         // Assert
         Assert.NotEmpty(result);
-        Assert.Contains("Date: 2024-03-15", result);
+        // Date should be formatted and integrated into the paragraph
+        var paragraphWithDate = result.FirstOrDefault(line => line.Contains("Date: 2024-03-15"));
+        Assert.NotNull(paragraphWithDate);
+        Assert.Contains("Meeting scheduled for Date: 2024-03-15", paragraphWithDate);
     }
 
     [Fact]

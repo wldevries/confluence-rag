@@ -104,7 +104,14 @@ public class ConfluenceMarkdownExtractorTestsPeople
 
         // Assert
         Assert.NotEmpty(result);
-        Assert.Contains("User ID: user1", result);
-        Assert.Contains("User ID: user2", result);
+        var resultList = result.ToList();
+        
+        // The full paragraph should contain both user references
+        Assert.Single(resultList);
+        var fullText = string.Join(" ", resultList);
+        
+        // Check that the full text contains both user references
+        Assert.True(fullText.Contains("User ID: user1"), $"Expected 'User ID: user1' in: {fullText}");
+        Assert.True(fullText.Contains("User ID: user2"), $"Expected 'User ID: user2' in: {fullText}");
     }
 }
