@@ -143,4 +143,45 @@ public class ConfluenceMarkdownExtractorTests
         Assert.All(result.Where(l => l.Contains("`")), line => 
             Assert.True(line.Count(c => c == '`') % 2 == 0, "Code blocks should be properly closed on same line"));
     }
+
+    [Fact]
+    public void ExtractMarkdown_WithStructuredCodeMacro_ShouldIncludeLargeCodeBlocks()
+    {
+        // Arrange
+        var xml = @"<p>Configuration example:</p>
+        <ac:structured-macro ac:name=""code"" ac:schema-version=""1"">
+            <ac:parameter ac:name=""language"">json</ac:parameter>
+            <ac:plain-text-body><![CDATA[{
+  ""name"": ""test-app"",
+  ""version"": ""1.0.0"",
+  ""dependencies"": {
+    ""express"": ""^4.18.0"",
+    ""lodash"": ""^4.17.21""
+  }
+}]]></ac:plain-text-body>
+        </ac:structured-macro>
+        <p>End of example.</p>";
+
+        // Act
+        var result = _extractor.ExtractMarkdown(xml);
+
+        // Assert
+        Assert.NotEmpty(result);
+        Assert.Contains("Configuration example:", result);
+        Assert.Contains("End of example.", result);
+        
+        // Verify that the code block is properly formatted
+        Assert.Contains("```json", result);
+        Assert.Contains("```", result.Where(l => l == "```"));
+        Assert.Contains("  \"name\": \"test-app\",", result);
+        Assert.Contains("  \"version\": \"1.0.0\",", result);
+        Assert.Contains("  \"dependencies\": {", result);
+        
+        // Verify code block structure
+        var codeStartIndex = result.ToList().FindIndex(l => l == "```json");
+        var codeEndIndex = result.ToList().FindIndex(codeStartIndex + 1, l => l == "```");
+        Assert.True(codeStartIndex >= 0, "Code block should start with ```json");
+        Assert.True(codeEndIndex > codeStartIndex, "Code block should end with ```");
+        Assert.True(codeEndIndex - codeStartIndex > 2, "Code block should contain actual code content");
+    }
 }

@@ -495,6 +495,40 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                 foreach (var line in ExtractConfluenceContentFromXElement(child))
                     yield return line;
                 break;
+            
+            case "plain-text-body":
+                // Handle plain-text-body for code blocks
+                var codeContent = child.Value.Trim();
+                if (!string.IsNullOrEmpty(codeContent))
+                {
+                    // Check if parent is a structured macro with name="code"
+                    var parentMacro = child.Parent;
+                    var isCodeMacro = parentMacro?.Name.LocalName == "structured-macro" && 
+                                     parentMacro.Attribute(XName.Get("name", AtlassianCloudNamespace))?.Value == "code";
+                    
+                    if (isCodeMacro)
+                    {
+                        // Extract language parameter from parent macro
+                        var languageParam = parentMacro.Elements().FirstOrDefault(e => 
+                            e.Name.LocalName == "parameter" && 
+                            (string?)e.Attribute(XName.Get("name", AtlassianCloudNamespace)) == "language")?.Value;
+                        var language = !string.IsNullOrWhiteSpace(languageParam) ? languageParam.Trim() : "";
+                        
+                        // Format as markdown code block
+                        yield return $"```{language}";
+                        foreach (var line in codeContent.Split('\n'))
+                        {
+                            yield return line.TrimEnd('\r');
+                        }
+                        yield return "```";
+                    }
+                    else
+                    {
+                        // Treat as regular text content
+                        yield return codeContent;
+                    }
+                }
+                break;
 
             case "structured-macro":
                 foreach (var line in ExtractStructuredMacroContent(child))
@@ -601,6 +635,28 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
             case "link":
                 foreach (var line in ExtractConfluenceContentFromXElement(child))
                     yield return line;
+                break;
+            case "code":
+                // Extract language parameter if present
+                var languageParam = child.Elements().FirstOrDefault(e => e.Name.LocalName == "parameter" && (string?)e.Attribute(XName.Get("name", AtlassianCloudNamespace)) == "language")?.Value;
+                var language = !string.IsNullOrWhiteSpace(languageParam) ? languageParam.Trim() : "";
+                
+                // Extract code content from plain-text-body
+                var plainTextBody = child.Elements().FirstOrDefault(e => e.Name.LocalName == "plain-text-body");
+                if (plainTextBody != null)
+                {
+                    var codeContent = plainTextBody.Value.Trim();
+                    if (!string.IsNullOrEmpty(codeContent))
+                    {
+                        // Format as markdown code block
+                        yield return $"```{language}";
+                        foreach (var line in codeContent.Split('\n'))
+                        {
+                            yield return line.TrimEnd('\r');
+                        }
+                        yield return "```";
+                    }
+                }
                 break;
             default:
                 yield return $"[Structured macro removed: {macroName}]";
