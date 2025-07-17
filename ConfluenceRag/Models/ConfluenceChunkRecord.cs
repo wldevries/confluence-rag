@@ -1,4 +1,4 @@
-namespace ConfluenceRag;
+namespace ConfluenceRag.Models;
 
 public record ConfluenceChunkRecord(
     ConfluenceChunkMetadata Metadata,

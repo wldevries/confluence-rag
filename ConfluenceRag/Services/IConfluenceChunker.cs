@@ -1,6 +1,7 @@
+using ConfluenceRag.Models;
 using Microsoft.Extensions.AI;
 
-namespace ConfluenceRag;
+namespace ConfluenceRag.Services;
 
 public interface IConfluenceChunker
 {

@@ -1,3 +1,5 @@
+using ConfluenceRag.Models;
+using ConfluenceRag.Services;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestPlatform.Common;

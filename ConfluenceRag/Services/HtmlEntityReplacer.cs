@@ -1,4 +1,4 @@
-namespace ConfluenceRag;
+namespace ConfluenceRag.Services;
 
 public static partial class HtmlEntityReplacer
 {

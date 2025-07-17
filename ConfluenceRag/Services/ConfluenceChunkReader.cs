@@ -1,7 +1,8 @@
 using System.IO.Abstractions;
 using System.Text.Json;
+using ConfluenceRag.Models;
 
-namespace ConfluenceRag;
+namespace ConfluenceRag.Services;
 
 /// <summary>
 /// Utility class for reading chunks from the new metadata.jsonl + embeddings.bin format

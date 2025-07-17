@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
 using System.IO.Abstractions;
 using ConfluenceRag.Handlers;
+using ConfluenceRag.Models;
 
 namespace ConfluenceRag;
 

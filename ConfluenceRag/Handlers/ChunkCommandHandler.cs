@@ -1,4 +1,5 @@
 using System.CommandLine;
+using ConfluenceRag.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 

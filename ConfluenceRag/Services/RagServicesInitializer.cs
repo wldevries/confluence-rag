@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.IO.Abstractions;
+using ConfluenceRag.Services;
+using ConfluenceRag.Models;
 
 namespace ConfluenceRag;
 

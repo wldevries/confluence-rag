@@ -1,3 +1,5 @@
+using ConfluenceRag.Services;
+
 namespace ConfluenceRag.Tests;
 
 public class HtmlEntityReplacerTests

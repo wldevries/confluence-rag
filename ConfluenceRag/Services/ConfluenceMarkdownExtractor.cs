@@ -1,14 +1,10 @@
 using System.IO.Abstractions;
 using System.Text.Json;
 using System.Xml.Linq;
+using ConfluenceRag.Models;
 using Microsoft.Extensions.Logging;
 
-namespace ConfluenceRag;
-
-public interface IConfluenceMarkdownExtractor
-{
-    List<string> ExtractMarkdown(string xml);
-}
+namespace ConfluenceRag.Services;
 
 public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
 {

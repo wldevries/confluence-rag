@@ -1,8 +1,9 @@
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO.Abstractions;
+using ConfluenceRag.Services;
 
-namespace ConfluenceRag;
+namespace ConfluenceRag.Handlers;
 
 public static class SearchCommandHandler
 {

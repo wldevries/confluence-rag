@@ -1,8 +1,9 @@
+using ConfluenceRag.Models;
 using Spectre.Console;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-namespace ConfluenceRag;
+namespace ConfluenceRag.Services;
 
 public class ConfluenceFetcher : IConfluenceFetcher
 {

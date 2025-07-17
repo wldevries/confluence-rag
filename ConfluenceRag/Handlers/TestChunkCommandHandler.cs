@@ -1,6 +1,7 @@
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO.Abstractions;
+using ConfluenceRag.Services;
 
 namespace ConfluenceRag.Handlers;
 

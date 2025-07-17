@@ -1,8 +1,9 @@
+using ConfluenceRag.Models;
 using Microsoft.Extensions.AI;
 using System.IO.Abstractions;
 using System.Text.Json;
 
-namespace ConfluenceRag;
+namespace ConfluenceRag.Services;
 
 public class ConfluenceChunker : IConfluenceChunker
 {
