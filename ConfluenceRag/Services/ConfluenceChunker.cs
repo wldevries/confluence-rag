@@ -1,4 +1,5 @@
 using ConfluenceRag.Models;
+using FastBertTokenizer;
 using Microsoft.Extensions.AI;
 using System.IO.Abstractions;
 using System.Text.Json;
@@ -10,15 +11,18 @@ public class ConfluenceChunker : IConfluenceChunker
     private readonly IFileSystem _fileSystem;
     private readonly IConfluenceMarkdownExtractor _extractor;
     private readonly ConfluenceChunkerOptions _options;
+    private readonly BertTokenizer _tokenizer;
 
     public ConfluenceChunker(
         IFileSystem fileSystem,
         IConfluenceMarkdownExtractor extractor,
-        ConfluenceChunkerOptions options)
+        ConfluenceChunkerOptions options,
+        BertTokenizer? tokenizer = null)
     {
         _fileSystem = fileSystem;
         _extractor = extractor;
         _options = options;
+        _tokenizer = tokenizer ?? new();
     }
 
     public async Task<int> ProcessAllConfluenceJsonAndChunkAsync(string dataDir, string outputDir, IEmbeddingGenerator<string, Embedding<float>> embedder)
@@ -159,7 +163,8 @@ public class ConfluenceChunker : IConfluenceChunker
 
         for (int i = 0; i < lines.Count; i++)
         {
-            var line = lines[i];
+            // Trim trailing whitespace only
+            var line = lines[i].TrimEnd();
             // Detect heading (markdown style)
             int headingLevel = GetHeadingLevel(line);
             if (headingLevel > 0 && headingLevel <= 6)
@@ -175,44 +180,99 @@ public class ConfluenceChunker : IConfluenceChunker
             headingContexts.Add((string[])currentHeadings.Clone());
         }
 
-        int startIndex = 0;
-        while (startIndex < lines.Count)
+        if (_options.UseTokenLengthChunking)
         {
-            var currentLines = new List<string>();
-            int currentLength = 0;
-            int endIndex = startIndex;
-            // Use the heading context at the start of the chunk
-            string[] chunkHeadings = headingContexts[startIndex];
-
-            // Build chunk starting from startIndex with dynamic sizing
-            for (int i = startIndex; i < lines.Count; i++)
+            // Token-based chunking
+            int startIndex = 0;
+            long[] tokenIdsBuffer = new long[512];
+            long[] attentionMaskBuffer = new long[512];
+            while (startIndex < lines.Count)
             {
-                var line = lines[i];
-                var dynamicMaxSize = GetDynamicChunkSize(line, maxChunkSize);
-                if (currentLength + line.Length + 1 > dynamicMaxSize && currentLines.Count > 0)
+                var currentLines = new List<string>();
+                int currentTokenCount = 0;
+                int endIndex = startIndex;
+                string[] chunkHeadings = headingContexts[startIndex];
+
+                for (int i = startIndex; i < lines.Count; i++)
                 {
-                    endIndex = i;
-                    break;
+                    // Trim trailing whitespace only
+                    var line = lines[i].TrimEnd();
+                    int lineTokens = _tokenizer.Encode(line, tokenIdsBuffer, attentionMaskBuffer);
+                    if (currentTokenCount + lineTokens > maxChunkSize && currentLines.Count > 0)
+                    {
+                        endIndex = i;
+                        break;
+                    }
+                    currentLines.Add(line);
+                    currentTokenCount += lineTokens;
+                    endIndex = i + 1;
                 }
-                currentLines.Add(line);
-                currentLength += line.Length + 1;
-                endIndex = i + 1;
-            }
 
-            if (currentLines.Count > 0)
+                if (currentLines.Count > 0)
+                {
+                    chunks.Add((string.Join("\n", currentLines), (string[])chunkHeadings.Clone()));
+                }
+
+                // Calculate next start position with token overlap
+                if (endIndex >= lines.Count)
+                {
+                    break; // We've processed all lines
+                }
+
+                // Find overlap start position by going back from endIndex, counting tokens
+                int overlapStart = endIndex - 1;
+                int overlapTokens = 0;
+                while (overlapStart >= 0 && overlapTokens < _options.TokenOverlapSize)
+                {
+                    var overlapLine = lines[overlapStart].TrimEnd();
+                    int overlapLineTokens = _tokenizer.Encode(overlapLine, tokenIdsBuffer, attentionMaskBuffer);
+                    overlapTokens += overlapLineTokens;
+                    if (overlapTokens >= _options.TokenOverlapSize)
+                        break;
+                    overlapStart--;
+                }
+                startIndex = Math.Max(overlapStart, startIndex + 1); // Ensure we make progress
+            }
+        }
+        else
+        {
+            // Character-based chunking (legacy)
+            int startIndex = 0;
+            while (startIndex < lines.Count)
             {
-                chunks.Add((string.Join("\n", currentLines), (string[])chunkHeadings.Clone()));
-            }
+                var currentLines = new List<string>();
+                int currentLength = 0;
+                int endIndex = startIndex;
+                string[] chunkHeadings = headingContexts[startIndex];
 
-            // Calculate next start position with overlap
-            if (endIndex >= lines.Count)
-            {
-                break; // We've processed all lines
-            }
+                for (int i = startIndex; i < lines.Count; i++)
+                {
+                    // Trim trailing whitespace only
+                    var line = lines[i].TrimEnd();
+                    if (currentLength + line.Length + 1 > maxChunkSize && currentLines.Count > 0)
+                    {
+                        endIndex = i;
+                        break;
+                    }
+                    currentLines.Add(line);
+                    currentLength += line.Length + 1;
+                    endIndex = i + 1;
+                }
 
-            // Find overlap start position by going back from endIndex
-            int overlapStart = FindOverlapStart(lines, endIndex, overlapSize);
-            startIndex = Math.Max(overlapStart, startIndex + 1); // Ensure we make progress
+                if (currentLines.Count > 0)
+                {
+                    chunks.Add((string.Join("\n", currentLines), (string[])chunkHeadings.Clone()));
+                }
+
+                // Calculate next start position with overlap (character-based)
+                if (endIndex >= lines.Count)
+                {
+                    break; // We've processed all lines
+                }
+
+                int overlapStart = FindOverlapStart(lines.Select(l => l.TrimEnd()).ToList(), endIndex, overlapSize);
+                startIndex = Math.Max(overlapStart, startIndex + 1); // Ensure we make progress
+            }
         }
 
         return chunks;
@@ -227,20 +287,6 @@ public class ConfluenceChunker : IConfluenceChunker
         if (level > 0 && (line.Length == level || char.IsWhiteSpace(line[level])))
             return level;
         return 0;
-    }
-
-    // Helper: dynamic chunk size logic (same as before)
-    private int GetDynamicChunkSize(string content, int baseMaxSize)
-    {
-        if (content.Contains("```") || content.Contains("`"))
-            return (int)(baseMaxSize * 1.5);
-        else if (content.Contains("|") && content.Split('|').Length > 4)
-            return (int)(baseMaxSize * 1.3);
-        else if (content.StartsWith("- ") || content.StartsWith("* "))
-            return (int)(baseMaxSize * 0.8);
-        else if (content.StartsWith("#"))
-            return (int)(baseMaxSize * 0.7);
-        return baseMaxSize;
     }
 
     // Helper: overlap logic (same as before)
