@@ -119,4 +119,28 @@ public class ConfluenceMarkdownExtractorTests
         Assert.Contains("*italic text*", result);
         Assert.Contains("`code text`", result);
     }
+
+    [Fact]
+    public void ExtractMarkdown_WithInlineCodeInListItems_ShouldKeepCodeInline()
+    {
+        // Arrange
+        var xml = @"<ul>
+            <li><p>Install the <code>app.exe</code> file to <code>/usr/local/bin</code> directory.</p></li>
+            <li><p>Set the <code>PATH</code> environment variable correctly.</p></li>
+        </ul>";
+
+        // Act
+        var result = _extractor.ExtractMarkdown(xml);
+
+        // Assert
+        Assert.NotEmpty(result);
+        
+        // Verify that code blocks stay inline within list items
+        Assert.Contains("- Install the `app.exe` file to `/usr/local/bin` directory.", result);
+        Assert.Contains("- Set the `PATH` environment variable correctly.", result);
+        
+        // Verify that inline code is not split across multiple lines
+        Assert.All(result.Where(l => l.Contains("`")), line => 
+            Assert.True(line.Count(c => c == '`') % 2 == 0, "Code blocks should be properly closed on same line"));
+    }
 }
