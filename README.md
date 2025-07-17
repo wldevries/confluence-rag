@@ -76,33 +76,21 @@ PageId,Name
 ## Direct Commands
 
 ```bash
-# Build project
-dotnet build
-
-# Fetch specific page and its children
+# Fetch a specific page and its children
 dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- fetch [pageId]
+
+# Fetch people data from Confluence and update data/people.json
+dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- fetch-people
 
 # Process all fetched pages into chunks
 dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- chunk
 
+# Analyze all chunked data for statistics and quality
+dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- analyze
+
 # Test chunking on a single file
 dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- test-chunk "data/pages/[PageId]_[Title].json"
+
+# Search processed chunks (RAG search)
+dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- search [query]
 ```
-
-## Architecture
-
-### Content Processing Pipeline
-- **Fetching**: Retrieves Confluence pages and their children via Atlassian REST API
-- **Processing**: Converts XHTML storage format to semantic chunks with embeddings
-- **Storage**: Outputs chunks as JSONL with metadata and embeddings for RAG systems
-
-### Data Flow
-1. confluence-pages.csv → fetch-confluence.ps1 → ConfluenceRag fetch
-2. Confluence API → Local JSON files → Processing → JSONL chunks with embeddings
-3. Output ready for consumption by RAG systems
-
-### Confluence Storage Format
-Processes XHTML-based XML with custom namespaces including:
-- `ac:` (Atlassian Confluence) - for macros and Confluence elements
-- `ri:` (Resource Identifier) - for links, users, and page references
-- People resolution using `data/people.json`
