@@ -45,6 +45,72 @@ public class ConfluenceChunkReader
     }
 
     /// <summary>
+    /// Searches for chunks by embedding similarity
+    /// </summary>
+    public async Task<List<(ConfluenceChunkRecord Chunk, float Similarity)>> SearchBySimilarityAsync(float[] queryEmbedding, int topK = 10)
+    {
+        // Read all metadata lines
+        if (!_fileSystem.File.Exists(_metadataPath) || !_fileSystem.File.Exists(_embeddingsPath))
+            return new List<(ConfluenceChunkRecord, float)>();
+
+        var metadataLines = await _fileSystem.File.ReadAllLinesAsync(_metadataPath);
+        int chunkCount = metadataLines.Count(line => !string.IsNullOrWhiteSpace(line));
+        var metadatas = new List<ConfluenceChunkMetadata>(chunkCount);
+        var validLineIndices = new List<int>(chunkCount);
+        for (int i = 0; i < metadataLines.Length; i++)
+        {
+            var line = metadataLines[i];
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var metadata = JsonSerializer.Deserialize<ConfluenceChunkMetadata>(line);
+            if (metadata != null)
+            {
+                metadatas.Add(metadata);
+                validLineIndices.Add(i);
+            }
+        }
+
+        // Read all embeddings in one go
+        var embeddings = new List<float[]>(metadatas.Count);
+        using (var stream = _fileSystem.File.OpenRead(_embeddingsPath))
+        {
+            for (int i = 0; i < validLineIndices.Count; i++)
+            {
+                long offset = (long)validLineIndices[i] * EmbeddingByteSize;
+                if (offset + EmbeddingByteSize > stream.Length)
+                {
+                    embeddings.Add(new float[EmbeddingSize]); // fallback to zero vector
+                    continue;
+                }
+                stream.Seek(offset, SeekOrigin.Begin);
+                var embeddingBytes = new byte[EmbeddingByteSize];
+                int bytesRead = stream.Read(embeddingBytes, 0, EmbeddingByteSize);
+                if (bytesRead != EmbeddingByteSize)
+                {
+                    embeddings.Add(new float[EmbeddingSize]);
+                    continue;
+                }
+                var embedding = new float[EmbeddingSize];
+                Buffer.BlockCopy(embeddingBytes, 0, embedding, 0, EmbeddingByteSize);
+                embeddings.Add(embedding);
+            }
+        }
+
+        // Calculate similarities in memory
+        var results = new List<(ConfluenceChunkRecord, float)>(metadatas.Count);
+        for (int i = 0; i < metadatas.Count; i++)
+        {
+            var similarity = CalculateCosineSimilarity(queryEmbedding, embeddings[i]);
+            var record = new ConfluenceChunkRecord(metadatas[i], embeddings[i]);
+            results.Add((record, similarity));
+        }
+
+        return results
+            .OrderByDescending(r => r.Item2)
+            .Take(topK)
+            .ToList();
+    }
+
+    /// <summary>
     /// Searches for chunks by text content (simple contains search)
     /// </summary>
     public async Task<List<ConfluenceChunkRecord>> SearchByTextAsync(string searchText)
@@ -178,5 +244,30 @@ public class ConfluenceChunkReader
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Calculates cosine similarity between two embedding vectors
+    /// </summary>
+    private static float CalculateCosineSimilarity(float[] a, float[] b)
+    {
+        if (a.Length != b.Length)
+            throw new ArgumentException("Vectors must have the same length");
+
+        float dotProduct = 0f;
+        float normA = 0f;
+        float normB = 0f;
+
+        for (int i = 0; i < a.Length; i++)
+        {
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+
+        if (normA == 0f || normB == 0f)
+            return 0f;
+
+        return dotProduct / (MathF.Sqrt(normA) * MathF.Sqrt(normB));
     }
 }
