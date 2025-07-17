@@ -188,8 +188,12 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
 
                     case "p":
                     case "div":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return line;
+                        var paragraphContent = string.Join("", ExtractConfluenceContentFromXElement(child))
+                            .Trim()
+                            .Replace("\n", " ")
+                            .Replace("\r", " ");
+                        if (!string.IsNullOrEmpty(paragraphContent))
+                            yield return paragraphContent;
                         yield return ""; // Add a blank line after paragraphs/divs
                         break;
 
@@ -245,8 +249,12 @@ public class ConfluenceMarkdownExtractor : IConfluenceMarkdownExtractor
                         break;
                     case "code":
                     case "pre":
-                        foreach (var line in ExtractConfluenceContentFromXElement(child))
-                            yield return "`" + line.Trim() + "`";
+                        var codeContent = string.Join(" ", ExtractConfluenceContentFromXElement(child))
+                            .Trim()
+                            .Replace("\n", " ")
+                            .Replace("\r", " ");
+                        if (!string.IsNullOrEmpty(codeContent))
+                            yield return "`" + codeContent + "`";
                         break;
                     case "br":
                         yield return ""; // blank line
