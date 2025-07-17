@@ -57,8 +57,8 @@ public class ConfluenceChunkerTestsDates
         // Assert
         Assert.NotEmpty(result);
         var chunk = result.First();
-        Assert.Null(chunk.CreatedDate);
-        Assert.Null(chunk.LastModifiedDate);
+        Assert.Null(chunk.Metadata.CreatedDate);
+        Assert.Null(chunk.Metadata.LastModifiedDate);
     }
 
     [Fact]
@@ -89,8 +89,8 @@ public class ConfluenceChunkerTestsDates
         // Assert
         Assert.NotEmpty(result);
         var chunk = result.First();
-        Assert.Equal("2024-01-10T09:15:30.0000000Z", chunk.CreatedDate);
-        Assert.Equal("2024-03-15T14:30:00.0000000Z", chunk.LastModifiedDate);
+        Assert.Equal("2024-01-10T09:15:30.0000000Z", chunk.Metadata.CreatedDate);
+        Assert.Equal("2024-03-15T14:30:00.0000000Z", chunk.Metadata.LastModifiedDate);
     }
 
     [Fact]
@@ -121,8 +121,8 @@ public class ConfluenceChunkerTestsDates
         // Assert
         Assert.NotEmpty(result);
         var chunk = result.First();
-        Assert.Equal("2024-01-10T09:15:30.0000000Z", chunk.CreatedDate);
-        Assert.Equal("2024-03-15T14:30:00.0000000Z", chunk.LastModifiedDate);
+        Assert.Equal("2024-01-10T09:15:30.0000000Z", chunk.Metadata.CreatedDate);
+        Assert.Equal("2024-03-15T14:30:00.0000000Z", chunk.Metadata.LastModifiedDate);
     }
 
     [Fact]
@@ -153,8 +153,8 @@ public class ConfluenceChunkerTestsDates
         // Assert
         Assert.NotEmpty(result);
         var chunk = result.First();
-        Assert.Null(chunk.CreatedDate);
-        Assert.Null(chunk.LastModifiedDate);
+        Assert.Null(chunk.Metadata.CreatedDate);
+        Assert.Null(chunk.Metadata.LastModifiedDate);
     }
 
     [Fact]
@@ -186,14 +186,14 @@ public class ConfluenceChunkerTestsDates
         // Assert
         Assert.NotEmpty(result);
         var chunk = result.First();
-        Assert.Equal("123456", chunk.PageId);
-        Assert.Equal("Test Page", chunk.Title);
-        Assert.Contains("/pages/viewpage.action?pageId=123456", chunk.WebUI);
-        Assert.Contains("test", chunk.Labels);
-        Assert.Contains("confluence", chunk.Labels);
-        Assert.Contains("# Test Heading", chunk.ChunkText);
-        Assert.NotNull(chunk.CreatedDate);
-        Assert.NotNull(chunk.LastModifiedDate);
+        Assert.Equal("123456", chunk.Metadata.PageId);
+        Assert.Equal("Test Page", chunk.Metadata.Title);
+        Assert.Contains("/pages/viewpage.action?pageId=123456", chunk.Metadata.WebUI);
+        Assert.Contains("test", chunk.Metadata.Labels);
+        Assert.Contains("confluence", chunk.Metadata.Labels);
+        Assert.Contains("# Test Heading", chunk.Metadata.ChunkText);
+        Assert.NotNull(chunk.Metadata.CreatedDate);
+        Assert.NotNull(chunk.Metadata.LastModifiedDate);
         Assert.NotEmpty(chunk.Embedding);
     }
 
@@ -248,8 +248,8 @@ public class ConfluenceChunkerTestsDates
         // Assert
         Assert.NotEmpty(result);
         var chunk = result.First();
-        Assert.Null(chunk.CreatedDate);
-        Assert.Null(chunk.LastModifiedDate);
+        Assert.Null(chunk.Metadata.CreatedDate);
+        Assert.Null(chunk.Metadata.LastModifiedDate);
     }
 
 }

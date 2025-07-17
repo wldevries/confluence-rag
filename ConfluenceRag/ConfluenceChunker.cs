@@ -30,28 +30,48 @@ public class ConfluenceChunker : IConfluenceChunker
         var files = _fileSystem.Directory.GetFiles(dataDir, "*.json");
         int chunkCount = 0;
         _fileSystem.Directory.CreateDirectory(outputDir);
-        string outputPath = _fileSystem.Path.Combine(outputDir, "chunks.jsonl");
-        using (var outputStream = _fileSystem.File.CreateText(outputPath))
+        
+        string metadataPath = _fileSystem.Path.Combine(outputDir, "metadata.jsonl");
+        string embeddingsPath = _fileSystem.Path.Combine(outputDir, "embeddings.bin");
+        
+        using var metadataStream = _fileSystem.File.CreateText(metadataPath);
+        using var embeddingsStream = _fileSystem.File.Create(embeddingsPath);
+        
+        const int EmbeddingSize = 384;
+        const int FloatSize = 4;
+        const int EmbeddingByteSize = EmbeddingSize * FloatSize;
+        
+        foreach (var file in files)
         {
-            foreach (var file in files)
+            try
             {
-                try
+                var chunkRecords = await ProcessSingleConfluenceJsonAndChunkAsync(file, embedder);
+                foreach (var chunkObj in chunkRecords)
                 {
-                    var chunkRecords = await ProcessSingleConfluenceJsonAndChunkAsync(file, embedder);
-                    foreach (var chunkObj in chunkRecords)
-                    {
-                        string json = JsonSerializer.Serialize(chunkObj);
-                        await outputStream.WriteLineAsync(json);
-                        chunkCount++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error processing {file}: {ex.Message}");
+                    // Write metadata (without embedding)
+                    var metadata = chunkObj.Metadata;
+                    
+                    string metadataJson = JsonSerializer.Serialize(metadata);
+                    await metadataStream.WriteLineAsync(metadataJson);
+                    
+                    // Write embedding as binary data
+                    if (chunkObj.Embedding.Length != EmbeddingSize)
+                        throw new InvalidOperationException($"Expected {EmbeddingSize} dimensions, got {chunkObj.Embedding.Length}");
+                    
+                    var embeddingBytes = new byte[EmbeddingByteSize];
+                    Buffer.BlockCopy(chunkObj.Embedding, 0, embeddingBytes, 0, EmbeddingByteSize);
+                    await embeddingsStream.WriteAsync(embeddingBytes);
+                    
+                    chunkCount++;
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error processing {file}: {ex.Message}");
+            }
         }
-        Console.WriteLine($"Processed {chunkCount} chunks. Exiting. Output: {outputPath}");
+        
+        Console.WriteLine($"Processed {chunkCount} chunks. Output: {metadataPath} and {embeddingsPath}");
         return chunkCount;
     }
 
@@ -105,7 +125,7 @@ public class ConfluenceChunker : IConfluenceChunker
             Console.WriteLine($"\tEmbedding chunk {chunkIdx + 1}/{totalChunks} for page '{title}' (ID: {chunkPageId})");
             var embeddingMem = await embedder.GenerateAsync(chunk.chunk);
             var embedding = embeddingMem.Vector.ToArray();
-            var chunkObj = new ConfluenceChunkRecord(
+            var metadata = new ConfluenceChunkMetadata(
                 PageId: chunkPageId,
                 WebUI: webui,
                 Title: title,
@@ -114,9 +134,10 @@ public class ConfluenceChunker : IConfluenceChunker
                 ChunkIndex: chunkIdx,
                 ChunkText: chunk.chunk,
                 CreatedDate: createdDate?.ToString("O"),
-                LastModifiedDate: lastModifiedDate?.ToString("O"),
-                Embedding: embedding
+                LastModifiedDate: lastModifiedDate?.ToString("O")
             );
+            
+            var chunkObj = new ConfluenceChunkRecord(metadata, embedding);
             result.Add(chunkObj);
             chunkIdx++;
         }

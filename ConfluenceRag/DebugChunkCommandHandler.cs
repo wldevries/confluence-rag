@@ -58,8 +58,8 @@ public static class DebugChunkCommandHandler
             int i = 1;
             foreach (var chunk in chunkRecords)
             {
-                var headingsStr = string.Join(" > ", chunk.Headings.Where(h => !string.IsNullOrWhiteSpace(h)));
-                Console.WriteLine($"Chunk {i++} (Headings: {headingsStr})\n{chunk.ChunkText}\n---");
+                var headingsStr = string.Join(" > ", chunk.Metadata.Headings.Where(h => !string.IsNullOrWhiteSpace(h)));
+                Console.WriteLine($"Chunk {i++} (Headings: {headingsStr})\n{chunk.Metadata.ChunkText}\n---");
             }
         }, debugChunkArg);
         rootCommand.AddCommand(debugChunkCommand);

@@ -114,9 +114,9 @@ class Program
 
                 foreach (var chunk in chunks)
                 {
-                    Console.WriteLine($"=== Chunk {chunk.ChunkIndex} ===");
-                    Console.WriteLine($"Headings: {string.Join(", ", chunk.Headings)}");
-                    Console.WriteLine(chunk.ChunkText);
+                    Console.WriteLine($"=== Chunk {chunk.Metadata.ChunkIndex} ===");
+                    Console.WriteLine($"Headings: {string.Join(", ", chunk.Metadata.Headings)}");
+                    Console.WriteLine(chunk.Metadata.ChunkText);
                     Console.WriteLine();
                 }
             }
@@ -146,6 +146,43 @@ class Program
             }
         });
         rootCommand.AddCommand(fetchPeopleCommand);
+        
+        // Add search command for testing new format
+        var searchTextArg = new Argument<string>("searchText", "Text to search for in chunks");
+        var searchCommand = new Command("search", "Search chunks using the new metadata.jsonl + embeddings.bin format");
+        searchCommand.AddArgument(searchTextArg);
+        searchCommand.SetHandler(async (string searchText) =>
+        {
+            try
+            {
+                var reader = new ConfluenceChunkReader(fileSystem, outputDir);
+                var chunks = await reader.SearchByTextAsync(searchText);
+                
+                Console.WriteLine($"Found {chunks.Count} chunks matching '{searchText}':");
+                Console.WriteLine();
+                
+                foreach (var chunk in chunks.Take(5)) // Show first 5 results
+                {
+                    Console.WriteLine($"=== {chunk.Metadata.Title} (Page: {chunk.Metadata.PageId}, Chunk: {chunk.Metadata.ChunkIndex}) ===");
+                    Console.WriteLine($"Headings: [{string.Join(", ", chunk.Metadata.Headings.Where(h => !string.IsNullOrEmpty(h)))}]");
+                    Console.WriteLine(chunk.Metadata.ChunkText.Length > 200 ? 
+                        chunk.Metadata.ChunkText.Substring(0, 200) + "..." : 
+                        chunk.Metadata.ChunkText);
+                    Console.WriteLine();
+                }
+                
+                if (chunks.Count > 5)
+                {
+                    Console.WriteLine($"... and {chunks.Count - 5} more results");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during search: {ex.Message}");
+            }
+        }, searchTextArg);
+        rootCommand.AddCommand(searchCommand);
+        
         DebugChunkCommandHandler.Register(rootCommand, provider, pagesDir);
 
         // If no command is specified, show help
