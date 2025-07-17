@@ -217,12 +217,24 @@ if ($chunksWithDates.Count -gt 0) {
     Write-Host "  No date information found in chunks"
 }
 
-# Embedding statistics
-$embeddingDimensions = $chunks[0].Embedding.Count
-$totalEmbeddings = $chunks.Count * $embeddingDimensions
-Write-Host "`nEmbedding Statistics:" -ForegroundColor White
-Write-Host "  Embedding dimensions: $embeddingDimensions"
-Write-Host "  Total embedding values: $totalEmbeddings"
-Write-Host "  Estimated embedding size: $([math]::Round($totalEmbeddings * 4 / 1024 / 1024, 2)) MB (float32)"
+# File information
+$embeddingFile = ".\output\confluence\embeddings.bin"
+Write-Host "`nFile Information:" -ForegroundColor White
+
+# Metadata file size
+$metadataFileSize = (Get-Item $ChunksFile).Length
+Write-Host "  Metadata file: $([System.IO.Path]::GetFileName($ChunksFile))"
+Write-Host "  Metadata file size: $([math]::Round($metadataFileSize / 1024 / 1024, 2)) MB"
+
+# Embedding file size
+if (Test-Path $embeddingFile) {
+    $embeddingFileSize = (Get-Item $embeddingFile).Length
+    Write-Host "  Embeddings stored in: embeddings.bin"
+    Write-Host "  Embedding file size: $([math]::Round($embeddingFileSize / 1024 / 1024, 2)) MB"
+    Write-Host "  Expected chunks with embeddings: $totalChunks"
+} else {
+    Write-Host "  Embedding file not found at: $embeddingFile" -ForegroundColor Yellow
+    Write-Host "  Embeddings may not have been generated yet"
+}
 
 Write-Host "`nAnalysis complete!" -ForegroundColor Green
