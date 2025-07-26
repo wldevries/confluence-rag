@@ -56,11 +56,11 @@ public class ConfluenceChunker : IConfluenceChunker
             {
                 var chunkRecords = await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
-                    .StartAsync($"File {i + 1}/{files.Length}: {fileName}", async ctx =>
+                    .StartAsync($"File {i + 1}/{files.Length}: {Markup.Escape(fileName)}", async ctx =>
                     {
                         var progress = new Progress<ChunkingProgress>(p =>
                         {
-                            ctx.Status($"File {i + 1}/{files.Length}: {fileName} - chunk {p.CurrentChunk}/{p.TotalChunks}");
+                            ctx.Status($"File {i + 1}/{files.Length}: {Markup.Escape(fileName)} - chunk {p.CurrentChunk}/{p.TotalChunks}");
                         });
                         
                         return await ProcessSingleConfluenceJsonAndChunkAsync(file, embedder, progress);
@@ -85,15 +85,15 @@ public class ConfluenceChunker : IConfluenceChunker
                     chunkCount++;
                 }
                 
-                AnsiConsole.MarkupLine($"[green]✓ File {i + 1}/{files.Length}: {fileName} - {chunkRecords.Count} chunks[/]");
+                AnsiConsole.MarkupLine($"[green]✓ File {i + 1}/{files.Length}: {Markup.Escape(fileName)} - {chunkRecords.Count} chunks[/]");
             }
             catch (Exception ex)
             {
-                AnsiConsole.MarkupLine($"[red]✗ File {i + 1}/{files.Length}: {fileName} - Error: {ex.Message}[/]");
+                AnsiConsole.MarkupLine($"[red]✗ File {i + 1}/{files.Length}: {Markup.Escape(fileName)} - Error: {ex.Message}[/]");
             }
         }
         
-        AnsiConsole.MarkupLine($"[bold green]Processed {chunkCount} chunks total. Output: {metadataPath} and {embeddingsPath}[/]");
+        AnsiConsole.MarkupLine($"[bold green]Processed {chunkCount} chunks total. Output: {Markup.Escape(metadataPath)} and {Markup.Escape(embeddingsPath)}[/]");
         return chunkCount;
     }
 
