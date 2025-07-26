@@ -1,11 +1,11 @@
-using System.CommandLine;
-using System.IO.Abstractions;
-using System.Text.Json.Nodes;
+using ConfluenceRag.Models;
 using FastBertTokenizer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ConfluenceRag.Models;
 using Spectre.Console;
+using System.CommandLine;
+using System.IO.Abstractions;
+using System.Text.Json.Nodes;
 
 namespace ConfluenceRag.Commands;
 
@@ -21,7 +21,7 @@ public class AnalyzeCommand(Func<IHostBuilder> createHostBuilder) : IRagCommand
         {
             chunksFileOption
         };
-        analyzeCommand.SetHandler(async (chunksFile) =>
+        analyzeCommand.SetHandler((chunksFile) =>
         {
             using var host = createHostBuilder().Build();
             var provider = host.Services;
