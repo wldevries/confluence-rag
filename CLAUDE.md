@@ -53,8 +53,8 @@ dotnet run --project ConfluenceRag/ConfluenceRag.csproj -- test-chunk [file] # T
 - `/output/confluence/embeddings.bin` - Chunk embeddings in binary form (LARGE FILE - do not read entire file)
 
 ### Important File Handling Notes
-- **DO NOT** attempt to read `/output/confluence/chunks.jsonl` as a whole file - it contains thousands of chunks with embeddings and is far too large for text processing tools
-- Use `head`, `tail`, or line-specific tools when examining chunks.jsonl
+- **DO NOT** attempt to read files in `/output/confluence/` as a whole file - it contains thousands of chunks with embeddings and is far too large for text processing tools
+- Use `head`, `tail`, or line-specific tools when examining `metadata.jsonl`
 - For testing individual Confluence pages, use the `test-chunk` command to process single files and output to stdout
 
 ### Configuration Files
