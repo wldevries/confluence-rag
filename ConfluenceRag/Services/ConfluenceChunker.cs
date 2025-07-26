@@ -1,6 +1,7 @@
 using ConfluenceRag.Models;
 using FastBertTokenizer;
 using Microsoft.Extensions.AI;
+using Spectre.Console;
 using System.IO.Abstractions;
 using System.Text.Json;
 
@@ -29,7 +30,7 @@ public class ConfluenceChunker : IConfluenceChunker
     {
         if (!_fileSystem.Directory.Exists(dataDir))
         {
-            Console.WriteLine($"Directory not found: {dataDir}");
+            AnsiConsole.MarkupLine($"[red]Directory not found: {dataDir}[/]");
             return 0;
         }
         var files = _fileSystem.Directory.GetFiles(dataDir, "*.json");
@@ -46,11 +47,25 @@ public class ConfluenceChunker : IConfluenceChunker
         const int FloatSize = 4;
         const int EmbeddingByteSize = EmbeddingSize * FloatSize;
         
-        foreach (var file in files)
+        for (int i = 0; i < files.Length; i++)
         {
+            var file = files[i];
+            var fileName = _fileSystem.Path.GetFileName(file);
+            
             try
             {
-                var chunkRecords = await ProcessSingleConfluenceJsonAndChunkAsync(file, embedder);
+                var chunkRecords = await AnsiConsole.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .StartAsync($"File {i + 1}/{files.Length}: {fileName}", async ctx =>
+                    {
+                        var progress = new Progress<ChunkingProgress>(p =>
+                        {
+                            ctx.Status($"File {i + 1}/{files.Length}: {fileName} - chunk {p.CurrentChunk}/{p.TotalChunks}");
+                        });
+                        
+                        return await ProcessSingleConfluenceJsonAndChunkAsync(file, embedder, progress);
+                    });
+                
                 foreach (var chunkObj in chunkRecords)
                 {
                     // Write metadata (without embedding)
@@ -69,20 +84,21 @@ public class ConfluenceChunker : IConfluenceChunker
                     
                     chunkCount++;
                 }
+                
+                AnsiConsole.MarkupLine($"[green]✓ File {i + 1}/{files.Length}: {fileName} - {chunkRecords.Count} chunks[/]");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error processing {file}: {ex.Message}");
+                AnsiConsole.MarkupLine($"[red]✗ File {i + 1}/{files.Length}: {fileName} - Error: {ex.Message}[/]");
             }
         }
         
-        Console.WriteLine($"Processed {chunkCount} chunks. Output: {metadataPath} and {embeddingsPath}");
+        AnsiConsole.MarkupLine($"[bold green]Processed {chunkCount} chunks total. Output: {metadataPath} and {embeddingsPath}[/]");
         return chunkCount;
     }
 
-    public async Task<List<ConfluenceChunkRecord>> ProcessSingleConfluenceJsonAndChunkAsync(string file, IEmbeddingGenerator<string, Embedding<float>> embedder)
+    public async Task<List<ConfluenceChunkRecord>> ProcessSingleConfluenceJsonAndChunkAsync(string file, IEmbeddingGenerator<string, Embedding<float>> embedder, IProgress<ChunkingProgress>? progress = null)
     {
-        Console.WriteLine($"Processing file: {file}");
         using var doc = JsonDocument.Parse(await _fileSystem.File.ReadAllTextAsync(file));
         var root = doc.RootElement;
         string title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "untitled" : "untitled";
@@ -119,15 +135,18 @@ public class ConfluenceChunker : IConfluenceChunker
                 .ToArray();
         }
         if (string.IsNullOrWhiteSpace(content)) return new List<ConfluenceChunkRecord>();
+        
         // Use the new extractor to get markdown for the whole document
         var markdown = _extractor.ExtractMarkdown(content);
         var chunkList = ChunkMarkdownWithHeadings(markdown, _options.MaxChunkSize, _options.OverlapSize);
-        int chunkIdx = 0;
         int totalChunks = chunkList.Count;
         var result = new List<ConfluenceChunkRecord>(totalChunks);
-        foreach (var chunk in chunkList)
+        
+        for (int chunkIdx = 0; chunkIdx < chunkList.Count; chunkIdx++)
         {
-            Console.WriteLine($"\tEmbedding chunk {chunkIdx + 1}/{totalChunks} for page '{title}' (ID: {chunkPageId})");
+            var chunk = chunkList[chunkIdx];
+            progress?.Report(new ChunkingProgress(chunkIdx + 1, totalChunks, title, chunkPageId));
+            
             var embeddingMem = await embedder.GenerateAsync(chunk.chunk);
             var embedding = embeddingMem.Vector.ToArray();
             var metadata = new ConfluenceChunkMetadata(
@@ -144,9 +163,8 @@ public class ConfluenceChunker : IConfluenceChunker
             
             var chunkObj = new ConfluenceChunkRecord(metadata, embedding);
             result.Add(chunkObj);
-            chunkIdx++;
         }
-        Console.WriteLine($"Finished processing {totalChunks} chunks for file: {file}\n");
+        
         return result;
     }
 
