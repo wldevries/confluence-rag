@@ -1,15 +1,17 @@
-using System.CommandLine;
-using Microsoft.Extensions.DependencyInjection;
-using System.IO.Abstractions;
+using ConfluenceRag.Models;
 using ConfluenceRag.Services;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Spectre.Console;
+using System.CommandLine;
+using System.IO.Abstractions;
 
-namespace ConfluenceRag.Handlers;
+namespace ConfluenceRag.Commands;
 
-public static class SearchCommandHandler
+public class SearchCommand(Func<IHostBuilder> createHostBuilder) : IRagCommand
 {
-    public static void Register(RootCommand rootCommand, IServiceProvider provider, string outputDir)
+    public Command CreateCommand()
     {
         var searchTextArg = new Argument<string>("searchText", "Text to search for in chunks");
         var useTextSearchOption = new Option<bool>("--text", "Use text-based search instead of embedding similarity search");
@@ -22,7 +24,15 @@ public static class SearchCommandHandler
         
         searchCommand.SetHandler(async (string searchText, bool useTextSearch, int topK) =>
         {
+            using var host = createHostBuilder().Build();
+            var provider = host.Services;
+            
             var fileSystem = provider.GetRequiredService<IFileSystem>();
+            var chunkerOptions = provider.GetRequiredService<ConfluenceChunkerOptions>();
+            
+            string outputDir = fileSystem.Path.IsPathRooted(chunkerOptions.OutputDir)
+                ? chunkerOptions.OutputDir
+                : fileSystem.Path.Combine(fileSystem.Directory.GetCurrentDirectory(), chunkerOptions.OutputDir);
             
             try
             {
@@ -103,7 +113,7 @@ public static class SearchCommandHandler
                 }
             }
         }, searchTextArg, useTextSearchOption, topKOption);
-        
-        rootCommand.AddCommand(searchCommand);
+
+        return searchCommand;
     }
 }

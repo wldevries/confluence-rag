@@ -1,13 +1,11 @@
+using ConfluenceRag.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.IO.Abstractions;
-using ConfluenceRag.Services;
-using ConfluenceRag.Models;
 using Microsoft.SemanticKernel.Connectors.Onnx;
-using Spectre.Console;
+using System.IO.Abstractions;
 
-namespace ConfluenceRag;
+namespace ConfluenceRag.Services;
 
 public static class RagServicesInitializer
 {
@@ -36,24 +34,21 @@ public static class RagServicesInitializer
             opts.Username = configuration["ATLASSIAN_USERNAME"] ?? throw new InvalidOperationException("ATLASSIAN_USERNAME environment variable is not set.");
             opts.ApiToken = configuration["ATLASSIAN_API_KEY"] ?? throw new InvalidOperationException("ATLASSIAN_API_KEY environment variable is not set.");
             opts.BaseUrl = configuration["ATLASSIAN_BASE_URL"] ?? throw new InvalidOperationException("ATLASSIAN_BASE_URL environment variable is not set.");
-            AnsiConsole.MarkupLineInterpolated($"[green]Using Confluence API at base url {opts.BaseUrl}[/]");
         });
         
         // Register embedding service
         var embeddingModelPath = configuration["EMBEDDING_MODEL_PATH"] ?? Path.Combine(Directory.GetCurrentDirectory(), "onnx/all-MiniLM-L6-v2");
         var modelPath = Path.Combine(embeddingModelPath, "model.onnx");
         var vocabPath = Path.Combine(embeddingModelPath, "vocab.txt");
-        AnsiConsole.MarkupLine($"[green]Using embedding model at: {modelPath}[/]");
         BertOnnxOptions bertOptions = new()
         {
             CaseSensitive = false,
         };
         services.AddBertOnnxEmbeddingGenerator(modelPath, vocabPath, bertOptions);
 
-        // Register embedding tokenizer        
+        // Register embedding tokenizer
         services.AddSingleton(services =>
         {
-            AnsiConsole.MarkupLine($"[green]Using tokenizer vocabulary at: {vocabPath}[/]");
             FastBertTokenizer.BertTokenizer tokenizer = new();
             using FileStream vocabStream = new(vocabPath, FileMode.Open, FileAccess.Read);
             using StreamReader vocabReader = new(vocabStream);

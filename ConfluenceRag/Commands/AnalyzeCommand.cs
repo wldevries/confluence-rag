@@ -3,31 +3,45 @@ using System.IO.Abstractions;
 using System.Text.Json.Nodes;
 using FastBertTokenizer;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using ConfluenceRag.Models;
 using Spectre.Console;
 
-namespace ConfluenceRag.Handlers;
+namespace ConfluenceRag.Commands;
 
-public static class AnalyzeChunksCommandHandler
+public class AnalyzeCommand(Func<IHostBuilder> createHostBuilder) : IRagCommand
 {
-    public static void Register(RootCommand rootCommand, IServiceProvider provider, string outputDir)
+    public Command CreateCommand()
     {
         var chunksFileOption = new Option<string>(
             name: "--chunks-file",
-            description: "Path to the metadata.jsonl file",
-            getDefaultValue: () => Path.Combine(outputDir, "metadata.jsonl")
+            description: "Path to the metadata.jsonl file"
         );
         var analyzeCommand = new Command("analyze", "Analyze chunk statistics from generated JSONL output")
         {
             chunksFileOption
         };
-        analyzeCommand.SetHandler(async (string chunksFile) =>
+        analyzeCommand.SetHandler(async (chunksFile) =>
         {
-            await AnalyzeChunks(chunksFile, provider.GetRequiredService<IFileSystem>(), provider.GetRequiredService<BertTokenizer>());
+            using var host = createHostBuilder().Build();
+            var provider = host.Services;
+            
+            var fileSystem = provider.GetRequiredService<IFileSystem>();
+            var chunkerOptions = provider.GetRequiredService<ConfluenceChunkerOptions>();
+            var tokenizer = provider.GetRequiredService<BertTokenizer>();
+            
+            string outputDir = fileSystem.Path.IsPathRooted(chunkerOptions.OutputDir)
+                ? chunkerOptions.OutputDir
+                : fileSystem.Path.Combine(fileSystem.Directory.GetCurrentDirectory(), chunkerOptions.OutputDir);
+            
+            string finalChunksFile = chunksFile ?? Path.Combine(outputDir, "metadata.jsonl");
+            
+            AnalyzeChunks(finalChunksFile, fileSystem, tokenizer);
         }, chunksFileOption);
-        rootCommand.AddCommand(analyzeCommand);
+        return analyzeCommand;
     }
 
-    private static async Task AnalyzeChunks(string chunksFile, IFileSystem fileSystem, BertTokenizer tokenizer)
+    private static void AnalyzeChunks(string chunksFile, IFileSystem fileSystem, BertTokenizer tokenizer)
     {
         AnsiConsole.MarkupLine("[cyan]Analyzing chunk statistics...[/]");
         AnsiConsole.MarkupLine($"[grey]Reading chunks from: {Markup.Escape(chunksFile)}[/]");

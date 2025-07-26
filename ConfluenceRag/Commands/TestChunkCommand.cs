@@ -1,19 +1,23 @@
-using System.CommandLine;
-using Microsoft.Extensions.DependencyInjection;
-using System.IO.Abstractions;
 using ConfluenceRag.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using System.CommandLine;
+using System.IO.Abstractions;
 
-namespace ConfluenceRag.Handlers;
+namespace ConfluenceRag.Commands;
 
-public static class TestChunkCommandHandler
+public class TestChunkCommand(Func<IHostBuilder> createHostBuilder) : IRagCommand
 {
-    public static void Register(RootCommand rootCommand, IServiceProvider provider)
+    public Command CreateCommand()
     {
         var chunkFileArg = new Argument<string>("file", "The Confluence JSON file to chunk");
         var testChunkCommand = new Command("test-chunk", "Chunk a single Confluence JSON file and output to stdout");
         testChunkCommand.AddArgument(chunkFileArg);
-        testChunkCommand.SetHandler(async (string file) =>
+        testChunkCommand.SetHandler(async (file) =>
         {
+            using var host = createHostBuilder().Build();
+            var provider = host.Services;
+            
             var fileSystem = provider.GetRequiredService<IFileSystem>();
             var chunker = provider.GetRequiredService<IConfluenceChunker>();
             var embedder = provider.GetRequiredService<Microsoft.Extensions.AI.IEmbeddingGenerator<string, Microsoft.Extensions.AI.Embedding<float>>>();
@@ -55,6 +59,6 @@ public static class TestChunkCommandHandler
             }
         }, chunkFileArg);
         
-        rootCommand.AddCommand(testChunkCommand);
+        return testChunkCommand;
     }
 }
