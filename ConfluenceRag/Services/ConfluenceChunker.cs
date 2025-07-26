@@ -30,7 +30,7 @@ public class ConfluenceChunker : IConfluenceChunker
     {
         if (!_fileSystem.Directory.Exists(dataDir))
         {
-            AnsiConsole.MarkupLine($"[red]Directory not found: {dataDir}[/]");
+            AnsiConsole.MarkupLine($"[red]✗[/] [bold red]Directory not found:[/] [white]{dataDir}[/]");
             return 0;
         }
         var files = _fileSystem.Directory.GetFiles(dataDir, "*.json");
@@ -56,11 +56,11 @@ public class ConfluenceChunker : IConfluenceChunker
             {
                 var chunkRecords = await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
-                    .StartAsync($"File {i + 1}/{files.Length}: {Markup.Escape(fileName)}", async ctx =>
+                    .StartAsync($"[cyan]{i + 1}[/][dim]/[/][cyan]{files.Length}[/] [white]{Markup.Escape(fileName)}[/]", async ctx =>
                     {
                         var progress = new Progress<ChunkingProgress>(p =>
                         {
-                            ctx.Status($"File {i + 1}/{files.Length}: {Markup.Escape(fileName)} - chunk {p.CurrentChunk}/{p.TotalChunks}");
+                            ctx.Status($"[cyan]{i + 1}[/][dim]/[/][cyan]{files.Length}[/] [white]{Markup.Escape(fileName)}[/] [dim]→ chunk[/] [yellow]{p.CurrentChunk}[/][dim]/[/][yellow]{p.TotalChunks}[/]");
                         });
                         
                         return await ProcessSingleConfluenceJsonAndChunkAsync(file, embedder, progress);
@@ -85,15 +85,15 @@ public class ConfluenceChunker : IConfluenceChunker
                     chunkCount++;
                 }
                 
-                AnsiConsole.MarkupLine($"[green]✓ File {i + 1}/{files.Length}: {Markup.Escape(fileName)} - {chunkRecords.Count} chunks[/]");
+                AnsiConsole.MarkupLine($"[green]✓[/] [bold blue]{i + 1}[/][dim]/[/][blue]{files.Length}[/] [white]{Markup.Escape(fileName)}[/] [dim]→ {chunkRecords.Count} chunks[/]");
             }
             catch (Exception ex)
             {
-                AnsiConsole.MarkupLine($"[red]✗ File {i + 1}/{files.Length}: {Markup.Escape(fileName)} - Error: {ex.Message}[/]");
+                AnsiConsole.MarkupLine($"[red]✗[/] [bold red]{i + 1}[/][dim]/[/][red]{files.Length}[/] [white]{Markup.Escape(fileName)}[/] [dim]→[/] [red]{ex.Message}[/]");
             }
         }
         
-        AnsiConsole.MarkupLine($"[bold green]Processed {chunkCount} chunks total. Output: {Markup.Escape(metadataPath)} and {Markup.Escape(embeddingsPath)}[/]");
+        AnsiConsole.MarkupLine($"[bold green]✓ Completed:[/] [white]{chunkCount} chunks total[/]\n[dim]Output:[/] [cyan]{Markup.Escape(metadataPath)}[/] [dim]and[/] [cyan]{Markup.Escape(embeddingsPath)}[/]");
         return chunkCount;
     }
 
