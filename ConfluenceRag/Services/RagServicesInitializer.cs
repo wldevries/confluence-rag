@@ -5,6 +5,7 @@ using System.IO.Abstractions;
 using ConfluenceRag.Services;
 using ConfluenceRag.Models;
 using Microsoft.SemanticKernel.Connectors.Onnx;
+using Spectre.Console;
 
 namespace ConfluenceRag;
 
@@ -12,6 +13,9 @@ public static class RagServicesInitializer
 {
     public static IServiceCollection BuildServiceProvider(IServiceCollection services, IConfiguration configuration)
     {
+        services.AddLogging(builder => builder.AddConsole());
+        services.AddSingleton<IFileSystem, FileSystem>();
+        
         services.AddSingleton(o => {
             var fetchDir = configuration["CONFLUENCE_FETCH_DIR"] ?? "data";
             var dataDir = Path.Combine(fetchDir, "pages");
@@ -32,26 +36,30 @@ public static class RagServicesInitializer
             opts.Username = configuration["ATLASSIAN_USERNAME"] ?? throw new InvalidOperationException("ATLASSIAN_USERNAME environment variable is not set.");
             opts.ApiToken = configuration["ATLASSIAN_API_KEY"] ?? throw new InvalidOperationException("ATLASSIAN_API_KEY environment variable is not set.");
             opts.BaseUrl = configuration["ATLASSIAN_BASE_URL"] ?? throw new InvalidOperationException("ATLASSIAN_BASE_URL environment variable is not set.");
+            AnsiConsole.MarkupLineInterpolated($"[green]Using Confluence API at base url {opts.BaseUrl}[/]");
         });
-
-        services.AddLogging(builder => builder.AddConsole());
-
-        // Register file system abstraction
-        services.AddSingleton<IFileSystem, FileSystem>();
-
+        
         // Register embedding service
         var embeddingModelPath = configuration["EMBEDDING_MODEL_PATH"] ?? Path.Combine(Directory.GetCurrentDirectory(), "onnx/all-MiniLM-L6-v2");
         var modelPath = Path.Combine(embeddingModelPath, "model.onnx");
         var vocabPath = Path.Combine(embeddingModelPath, "vocab.txt");
-        var bertOptions = new BertOnnxOptions();
-        services.AddBertOnnxEmbeddingGenerator(modelPath, vocabPath);
+        AnsiConsole.MarkupLine($"[green]Using embedding model at: {modelPath}[/]");
+        BertOnnxOptions bertOptions = new()
+        {
+            CaseSensitive = false,
+        };
+        services.AddBertOnnxEmbeddingGenerator(modelPath, vocabPath, bertOptions);
 
-        // Register tokenizer        
-        var tokenizer = new FastBertTokenizer.BertTokenizer();
-        using var vocabStream = new FileStream(vocabPath, FileMode.Open, FileAccess.Read);
-        using var vocabReader = new StreamReader(vocabStream);
-        tokenizer.LoadVocabulary(vocabReader, !bertOptions.CaseSensitive, bertOptions.UnknownToken, bertOptions.ClsToken, bertOptions.SepToken, bertOptions.PadToken, bertOptions.UnicodeNormalization);
-        services.AddSingleton(tokenizer);
+        // Register embedding tokenizer        
+        services.AddSingleton(services =>
+        {
+            AnsiConsole.MarkupLine($"[green]Using tokenizer vocabulary at: {vocabPath}[/]");
+            FastBertTokenizer.BertTokenizer tokenizer = new();
+            using FileStream vocabStream = new(vocabPath, FileMode.Open, FileAccess.Read);
+            using StreamReader vocabReader = new(vocabStream);
+            tokenizer.LoadVocabulary(vocabReader, !bertOptions.CaseSensitive, bertOptions.UnknownToken, bertOptions.ClsToken, bertOptions.SepToken, bertOptions.PadToken, bertOptions.UnicodeNormalization);
+            return tokenizer;
+        });
 
         // Register chunker and fetcher
         services.AddSingleton<IConfluenceChunker, ConfluenceChunker>();
